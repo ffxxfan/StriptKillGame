@@ -72,6 +72,9 @@ git commit -m "feat: create entity package structure"
 **Files:**
 - Create: `src/main/java/com/example/striptkillgamedemo2/entity/enums/GameRoomStatus.java`
 - Test: `src/test/java/com/example/striptkillgamedemo2/entity/enums/GameRoomStatusTest.java`
+```bash
+mkdir src/test/java/com/example/striptkillgamedemo2/entity/enums/GameRoomStatusTest.java
+```
 
 - [ ] **Step 1: Write failing test**
 
@@ -98,7 +101,8 @@ class GameRoomStatusTest {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-mvn test -Dtest=GameRoomStatusTest
+cd E:\loveCoding\StriptKillGameDemo2
+.\mvnw test -Dtest=GameRoomStatusTest
 ```
 
 Expected: FAIL with "cannot find symbol: class GameRoomStatus"
