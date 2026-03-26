@@ -139,6 +139,18 @@ public class Script {
      * Each stage contains role-specific content that is revealed at that stage.
      */
     private List<ScriptStage> stages;
+
+    /**
+     * Script version for tracking updates.
+     * Prevents breaking active games when script content changes.
+     */
+    private int version = 1;
+
+    /**
+     * Game-specific configuration overrides.
+     * Allows customizing rules, time limits, etc. per game instance.
+     */
+    private String configuration;
 }
 ```
 
@@ -166,6 +178,11 @@ public class ScriptStage {
 ### 4. Role
 
 Character definition within a script. Each human player or AI agent plays a role.
+
+**Note on Clue-Role Relationship:**
+Clue discoverability is controlled by **Clue.searchableRoleIds** (source of truth).
+Role.selfClueIds is for convenience/query optimization and should always match
+the reverse lookup from Clue collection. The system validates consistency on game start.
 
 ```java
 @Document(collection = "roles")
@@ -288,6 +305,22 @@ public class GameRoom {
      * Members (players and NPCs) in this room.
      */
     private List<Member> members;
+
+    /**
+     * When the game started. Used for session tracking and audit.
+     */
+    private LocalDateTime startTime;
+
+    /**
+     * When the game ended. Used for session tracking and audit.
+     */
+    private LocalDateTime endTime;
+
+    /**
+     * Game-specific configuration overrides.
+     * Allows customizing rules, time limits, etc. per game instance.
+     */
+    private String configuration;
 }
 ```
 
@@ -469,6 +502,24 @@ public class VoteRecord {
      */
     private ObjectId votedRoleId;
 
+    /**
+     * Optional category/type of vote.
+     * Supports different voting mechanics (elimination, revelation, etc.).
+     */
+    private String voteCategory;
+
+    /**
+     * Optional reason for the vote.
+     * Provides context for game analysis and AI summarization.
+     */
+    private String voteReason;
+
+    /**
+     * Optional vote weight.
+     * Supports weighted voting mechanics.
+     */
+    private Integer voteWeight;
+
     private LocalDateTime timestamp;
 }
 ```
@@ -560,6 +611,10 @@ com.example.striptkillgamedemo2.entity
 8. **Flexible DM Config:** dmConfig as JSON string allows customizable DM behaviors
 9. **Password Security:** Password field stores BCrypt-hashed passwords (not plain text)
 10. **Audit Trail:** GameClueInstance includes discoveredAt timestamp for tracking
+11. **Clue-Role Relationship:** Clue.searchableRoleIds is source of truth, Role.selfClueIds for optimization
+12. **Script Versioning:** Script.version and Script.configuration support updates and customization
+13. **GameRoom Audit:** GameRoom includes startTime, endTime, and configuration for tracking
+14. **Flexible Voting:** VoteRecord supports categories, reasons, and weighted votes for diverse mechanics
 
 ## Architecture Guidelines
 
@@ -617,3 +672,36 @@ com.example.striptkillgamedemo2.entity
 - **MongoDB Unavailable:** Write operations fail gracefully with user notification
 - **Network Issues:** Retry with exponential backoff for transient failures
 - **Data Corruption:** Validation on read, reject malformed entities
+
+## Data Migration and Schema Evolution
+
+### Migration Strategy
+
+- **Version Tracking:** Each entity includes version or timestamp for change detection
+- **Backward Compatibility:** New fields default to null/empty for existing documents
+- **Migration Scripts:** Use MongoDB changelog for structured migrations
+- **Zero-Downtime Migrations:** Run migrations with feature flags
+
+### Current Entity Versions
+
+- **User:** v1.0
+- **Script:** v1.1 (added version and configuration fields)
+- **Role:** v1.1 (added selfClueIds for optimization)
+- **Clue:** v1.1 (renamed searcheableRoleIds to searchableRoleIds)
+- **GameRoom:** v1.1 (added startTime, endTime, configuration)
+- **Member:** v1.0
+- **GameRecord:** v1.0
+- **GameClueInstance:** v1.1 (added discoveredAt)
+- **GameMessage:** v1.0
+- **VoteRecord:** v1.1 (added voteCategory, voteReason, voteWeight)
+
+### Migration Checklist
+
+When evolving schema:
+1. Add migration script to changelog collection
+2. Test migration on staging environment
+3. Plan rollback procedure
+4. Schedule maintenance during low-traffic period
+5. Monitor migration progress and errors
+6. Update entity version number
+7. Update application code to handle both old and new formats
