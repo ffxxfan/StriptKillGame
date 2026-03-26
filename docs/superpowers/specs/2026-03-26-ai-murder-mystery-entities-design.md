@@ -99,7 +99,8 @@ public class User {
 }
 ```
 
-**Notes:**
+**Security Notes:**
+- Password field stores BCrypt-hashed passwords (use BCryptPasswordEncoder in service layer)
 - Password is excluded from JSON serialization via `@JsonIgnore`
 - `@CreatedDate` will auto-populate `createdAt`
 - Username is unique indexed for authentication
@@ -262,7 +263,7 @@ public class Clue {
      * IDs of roles that can search for this clue.
      * Limits discoverability to specific roles.
      */
-    private List<ObjectId> searcheableRoleIds;
+    private List<ObjectId> searchableRoleIds;
 }
 ```
 
@@ -398,6 +399,12 @@ public class GameClueInstance {
      * Whether this clue has been discovered by anyone.
      */
     private boolean isFound = false;
+
+    /**
+     * Timestamp when this clue was discovered.
+     * Used for audit trail and time-based game mechanics.
+     */
+    private LocalDateTime discoveredAt;
 }
 ```
 
@@ -477,6 +484,14 @@ public class VoteRecord {
 | `game:{roomId}:vote:{voteId}` | Hash | VoteRecord details |
 | `game:{roomId}:stageLog` | List | Stage unlock history |
 | `game:{roomId}:cluePool` | Hash | Clue pool metadata |
+| `game:{roomId}:state` | Hash | Game state snapshot (for recovery) |
+| `session:{userId}` | Hash | WebSocket session metadata |
+| `game:{roomId}:participants` | Set | Online participant user IDs |
+
+**Redis Key Expiration:**
+- All game keys (`game:{roomId}:*`) expire after 24 hours if not explicitly cleaned
+- Session keys (`session:{userId}`) expire after 1 hour of inactivity
+- Keys are explicitly deleted when a game transitions to FINISHED state
 
 ## Dependencies
 
@@ -543,3 +558,62 @@ com.example.striptkillgamedemo2.entity
 6. **Optional Search Limits:** searchPower is nullable to support unlimited searches
 7. **Game Log Summarization:** GameRecord stores only key messages, not full chat history
 8. **Flexible DM Config:** dmConfig as JSON string allows customizable DM behaviors
+9. **Password Security:** Password field stores BCrypt-hashed passwords (not plain text)
+10. **Audit Trail:** GameClueInstance includes discoveredAt timestamp for tracking
+
+## Architecture Guidelines
+
+### Concurrency Control
+
+- **Redis Lua Scripts:** Use Redis scripting for atomic operations on clue discovery and voting
+- **Optimistic Locking:** MongoDB updates use version field for optimistic concurrency
+- **Distributed Locks:** Use Redis RedLock for game state transitions and critical operations
+
+### Session Management
+
+- **WebSocket Tracking:** Active user sessions tracked in `session:{userId}` keys
+- **Reconnection Support:** User can reconnect to active game via session restoration
+- **Online Status:** Participant set tracks who is currently connected
+- **Heartbeat:** Periodic heartbeat updates session TTL
+
+### Game Flow Control
+
+- **Stage Transitions:** Validated by GameFlowService with state machine pattern
+- **Transition Rules:** Each stage has specific completion conditions
+- **Event Publishing:** Spring events for stage transitions, game start/end
+- **State Snapshots:** Redis hash `game:{roomId}:state` stores current state for recovery
+
+### Disaster Recovery
+
+- **Redis Persistence:** Enable Redis AOF (Append Only File) for crash recovery
+- **State Snapshots:** Periodic snapshots of game state to MongoDB
+- **Graceful Degradation:** If Redis is unavailable, game pauses and notifies players
+- **Data Rebuild:** On Redis recovery, rebuild from MongoDB GameRoom + GameRecord if available
+
+### Cross-Database Consistency
+
+- **Transaction Boundaries:** MongoDB operations wrapped in transactions (MongoDB 4.0+)
+- **Saga Pattern:** For multi-step operations (e.g., game end → cleanup → record creation)
+- **Compensation Actions:** Define rollback procedures for failed operations
+- **Idempotency:** All write operations designed to be idempotent
+
+### Data Cleanup
+
+- **Game End Cleanup:** Explicit deletion of all `game:{roomId}:*` keys on game completion
+- **Scheduled Cleanup:** Background job removes expired keys (24-hour TTL safety net)
+- **Message Retention:** Messages archived to GameRecord before Redis cleanup
+- **Vote Retention:** Vote summaries included in GameRecord before Redis cleanup
+
+### Query Patterns
+
+- **Redis Queries:** Use key patterns and Redis Search module for complex queries
+- **MongoDB Indexes:** Compound indexes on (scriptId, stageNumber) for clue lookup
+- **Pagination:** Use cursor-based pagination for message/vote history
+- **Caching:** Static script/role/clue data cached in application cache (Caffeine)
+
+### Error Handling
+
+- **Redis Unavailable:** Circuit breaker pattern, fallback to game pause
+- **MongoDB Unavailable:** Write operations fail gracefully with user notification
+- **Network Issues:** Retry with exponential backoff for transient failures
+- **Data Corruption:** Validation on read, reject malformed entities
