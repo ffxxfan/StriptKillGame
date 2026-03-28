@@ -351,7 +351,7 @@
      你是一位顶级全栈架构师，精通 Spring AI (Function Calling)、Multi-Agent 系统设计、WebSocket (STOMP) 以及 MongoDB/Redis。你擅长构建高并发、强状态逻辑的游戏后端，并能优雅地解决 LLM 的长文本上下文压缩问题。
      
      # Context
-     项目是一款“剧本杀”游戏，核心是 “Harness 模式”：
+     项目是一款“剧本杀”游戏，核心是 “Harness 模式”，其中 AI DM 和 AI Agents 的初始 prompt 和上下文压缩时的 prompt 应该可以在配置文件中进行配置：
      
      AI DM (主持人)：掌握全局，拥有上帝视角，负责推进流程、审批玩家动作（搜证/投票）。
      
@@ -390,7 +390,7 @@
      允许 DM 查阅 Redis 中缓存的剧本完整真相（SECRET），但禁止直接复述原文。
      
      3. 上下文压缩与长程记忆 (MemoryManager)
-     压缩触发器：每一幕 (ScriptStage) 结束时，对于 Agent role，调用 Spring AI 将本幕 GameMessages 摘要为“关键事件碎片”（如：A 怀疑 B 有匕首）。
+     压缩触发器：每一幕 (ScriptStage) 结束时，调用 Spring AI 将本幕 GameMessages 摘要为“关键事件碎片”（如：A 怀疑 B 有匕首）。
      
      动态 Prompt 构造：
      
