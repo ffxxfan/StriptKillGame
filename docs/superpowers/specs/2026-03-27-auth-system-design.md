@@ -120,7 +120,7 @@ auth:refresh:{userId}    → refreshToken 字符串，TTL = 30 天
 | 登录 | `auth:refresh:{userId}` = refreshToken | — |
 | 登出 | `auth:blacklist:{jti}` = "1" | `auth:refresh:{userId}` |
 | 修改密码 | `auth:blacklist:{jti}` = "1" | `auth:refresh:{userId}` |
-| 刷新 Token | `auth:refresh:{userId}` = 新 refreshToken | — |
+| 刷新 Token | `auth:refresh:{userId}` = 新 Refresh Token（轮换） | — |
 
 ### 3.6 REST API 端点
 
@@ -191,7 +191,7 @@ frontend/src/
 
 **自动刷新 Token（Axios 响应拦截器）**：
 1. 收到 401 → 取 localStorage 中 refreshToken
-2. 调 `POST /api/auth/refresh`，成功 → 更新 store → 重试原请求
+2. 调 `POST /api/auth/refresh`，成功 → 更新 store（新 Access Token + 新 Refresh Token）→ 重试原请求
 3. Refresh Token 也失效 → 清除 store → 跳 `/login`
 
 **用户头像**：
