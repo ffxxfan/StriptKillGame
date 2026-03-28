@@ -16,6 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Set;
 
 /**
  * JWT 认证过滤器：拦截每个 HTTP 请求，从 Authorization Header 中提取并验证 JWT
@@ -32,6 +33,19 @@ import java.util.Collections;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+
+    /** 无需 JWT 验证的公开路径 */
+    private static final Set<String> PUBLIC_PATHS = Set.of(
+            "/api/auth/login",
+            "/api/auth/register",
+            "/api/auth/refresh"
+    );
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return PUBLIC_PATHS.contains(path);
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,

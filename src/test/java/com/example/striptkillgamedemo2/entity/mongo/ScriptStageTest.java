@@ -12,7 +12,6 @@ class ScriptStageTest {
         ScriptStage stage = ScriptStage.builder()
                 .stageNumber(1)
                 .stageTitle("Introduction")
-                .contentMap(Map.of(new ObjectId(), "Welcome to the mystery"))
                 .audioUrl("http://example.com/intro.mp3")
                 .build();
 

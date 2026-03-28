@@ -1,9 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import pinia from '../stores'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      // 默认根路径
+      path: '/',
+      redirect: '/login'
+    },
     {
       path: '/login',
       name: 'Login',
@@ -11,7 +17,7 @@ const router = createRouter({
       meta: { requiresAuth: false },
     },
     {
-      path: '/',
+      path: '/home',
       name: 'Home',
       component: () => import('../views/HomeView.vue'),
       meta: { requiresAuth: true },
@@ -50,12 +56,10 @@ const router = createRouter({
  * - 登录页：已登录跳 /
  */
 router.beforeEach((to, _from, next) => {
-  const authStore = useAuthStore()
+  const authStore = useAuthStore(pinia)
 
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
-    next('/login')
-  } else if (to.path === '/login' && authStore.isLoggedIn) {
-    next('/')
+    next({ name: 'Login' })
   } else {
     next()
   }

@@ -10,13 +10,12 @@ class RoleTest {
     @Test
     void roleEntityShouldHaveRequiredFields() {
         Role role = Role.builder()
-                .scriptId(new ObjectId())
+                .id(new ObjectId())
                 .name("Detective Smith")
                 .avatar("http://example.com/detective.png")
                 .isNpc(false)
                 .prompt("You are a clever detective")
                 .secret("You know the real killer")
-                .selfClueIds(List.of(new ObjectId()))
                 .locationTag("Living Room")
                 .searchPower(5)
                 .build();

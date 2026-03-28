@@ -19,7 +19,6 @@ class ScriptTest {
                 .dmConfig("{\"mode\":\"standard\"}")
                 .stages(List.of())
                 .version(1)
-                .configuration("{}")
                 .build();
 
         assertEquals("Mystery at the Mansion", script.getTitle());

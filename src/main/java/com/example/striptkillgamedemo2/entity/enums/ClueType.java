@@ -7,5 +7,6 @@ package com.example.striptkillgamedemo2.entity.enums;
  */
 public enum ClueType {
     TEXT,
-    IMAGE
+    IMAGE,
+    VIDEO
 }

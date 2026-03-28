@@ -30,27 +30,15 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "clues")
 public class Clue {
-    @Id
     private ObjectId id;
-
-    @Indexed
-    private ObjectId scriptId;
-
-    @NotBlank
     private String title;
-
-    @NotNull
-    private ClueType type;
-
+    private ClueType type; // TEXT, IMAGE, AUDIO
     private String content;
-
     private String imageUrl;
 
-    private boolean isInitialHidden = true;
-
-    private int stageNumber;
-
-    private List<ObjectId> searchableRoleIds;
+    // 控制逻辑
+    private boolean isInitialHidden = true; // 是否初始隐藏
+    private List<String> searchableRoleIds; // 哪些角色可以搜到这个线索
+    private List<String> locationTag;             // 所在地点
 }

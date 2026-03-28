@@ -76,7 +76,7 @@
 
    ```
    # Role
-   你是一位精通 Spring Boot 3.x 和 Spring Security 的资深后端架构师，同时熟悉 React/Vue 前端开发。
+   你是一位精通 Spring Boot 3.x 和 Spring Security 的资深后端架构师，同时熟悉 Vue 前端开发。
    
    # Task
    请基于 Spring AI 项目架构，实现一套完整的用户身份验证系统。包含：登录、登出、修改密码，以及基于 JWT 的 WebSocket (STOMP) 鉴权机制。User Entity 已经创建，**User (用户)**: id, username, password(JsonIgnore), nickname, avatarUrl, createdAt.
@@ -96,11 +96,8 @@
        - `/api/auth/register`: 注册账户
        - `/api/auth/info`: 查看账户信息
    
-   ## 2. 前端实现 (JavaScript/React 或 Vue)
-   - 使用 Axios 处理登录和密码修改。
-   - 使用 `stompjs` 和 `SockJS` 建立连接。
-   - 演示如何在 `stompClient.connect` 的 headers 中传递 JWT。
-   - 实现简单的登录页面。
+   ## 2. 前端实现 (Vue)
+   - 实现简单漂亮的登录页面。
    - 在用户登录后直接显示默认图像（后续会提供其他功能，请留好接口），右上角显示用户头像，点击后切换到用户信息展示`/api/auth/info`，用户可以在该界面进行 逻辑登出 和 修改密码。
    
    ## 3. 约束
@@ -108,7 +105,7 @@
    - 使用 Spring Boot 3 标准的配置方式。
    - 逻辑清晰，注释丰富。
    ```
-
+   
 3. Stage3 GameConteoller
 
    > 包含创建房间，用户选择剧本、用户随机刷新剧本，用户搜索剧本，用户选择角色，游戏开始，用户发言，用户投票，用户搜证，用户阅读剧本，用户查看历史信息，游戏结束。
@@ -116,3 +113,320 @@
    * Step1 简化的游戏过程
 
      > 创建房间，开始游戏，选择角色，游戏发言，游戏结束
+   
+     ```
+     # Role
+     你是一位全栈架构师，精通 Spring Boot 3、Spring AI、MongoDB、WebSocket (STOMP) 以及 Vue 3。
+     
+     # Context
+     我正在开发一款“剧本杀”游戏，玩家可以与多个 AI Agent 共同游戏。目前数据库模型（User, Script, Role, GameRoom, Member, GameMessages 等，详细信息位于src/main/java/com/example/striptkillgamedemo2/entity）已准备就绪。技术栈：后端 Spring Boot + Spring AI + MongoDB + Redis；前端 Vue 3 + Tailwind CSS + StompJS。
+     
+     # Task
+     请根据提供的 Model 结构，实现以下核心业务逻辑：
+     
+     1. 剧本选择与房间创建 (REST API)
+     剧本加载逻辑：从 MongoDB 随机获取 8 个 Script。如果数据库数量不足 8 个，前端需用占位图补齐。
+     
+     创建房间：初始化 GameRoom，状态设为 WAITING。
+     
+     角色分配：根据所选 Script 加载所有 Role。玩家选择一个角色后，查询该剧本下所有未被真人占用的 Role (根据 scriptId)，遍历这些角色：如果是 isNpc=true 的角色（如主持人 DM），生成一个 Member，isAi=true。如果是普通侦探/嫌疑人角色，生成一个 Member，isAi=true。
+     
+     2. 游戏流程控制 (WebSocket + State Machine)
+     开始游戏：房间状态转为 PLAYING。根据 Script 中的 stages 初始化第一幕。
+     
+     搜证系统基础：初始化 GameRoom 中的 cluePool。根据 Role 的 searchPower 限制玩家的搜证次数。
+     
+     阶段流转：实现从当前 ScriptStage 跳转至下一阶段的逻辑。
+     
+     3. 实时游戏对话 (WebSocket STOMP)
+     消息路由：实现 /app/chat.{roomId} 接收消息，并通过 /topic/room.{roomId} 广播。
+     
+     权限校验：使用之前提到的 JWT 拦截器，确保只有房间内的 Member 才能发言。
+     
+     对话存储：所有发言实时持久化到 GameMessages 集合，使用 redis 进行存储，游戏结束后释放。
+     
+     AI 响应触发：当玩家发言后，根据当前阶段上下文和 Role 中的 prompt 指令，调用 Spring AI 接口生成对应 Agent 的回复，并标记为 isAi=true。
+     
+     4. 前端交互界面 (Vue 3)
+     frontend/src/views/HomeView.vue 处用于展示用户进入游戏前的页面，现已用占位图进行表示，你需要修改这里的代码。
+     在 HomeView 界面，左边提供多个选择，包括`剧本杀游戏`、`剧本杀创作`、`剧本杀上传`，其中本次需要完成`剧本杀游戏`板块的前端页面，其余使用图片或文字进行展位。
+     在`剧本杀游戏`页面，用于可以点击右下角`创建房间`进入后端的创建房间，进入房间后右下角显示开始游戏，在`剧本墙`和`角色墙`选择结束之前不能选择开始游戏。
+     创建房间后包含`剧本墙`，用户在选择`剧本墙`中的剧本后，进入`角色墙`，`角色墙`选择结束之后，右下角`开始游戏`按钮变亮，用户可以点击开始游戏。
+     剧本墙：两排，一排四个，支持随机展示与占位。
+     角色墙：根据角色数量进行排列，角色<=5则一行展示，居中显示，角色 > 5 && 角色 <= 10 分两行展示，角色>10则分三行展示
+     开始游戏包含`聊天室`和`退出机制`
+     聊天室：
+     
+     玩家发言：头像和气泡靠右显示。
+     
+     Agent/其他玩家发言：头像和气泡靠左显示。
+     
+     退出机制：左上角退出按钮，点击后逻辑删除或更新 Member 状态，若房间无真人玩家则销毁房间。
+     
+     # Requirements
+     
+     代码质量：后端需包含 Service 层逻辑处理（特别是复杂的 Room 状态更新）。
+     
+     安全性：所有 WebSocket 动作必须校验 JWT 和用户在房间内的合法性。
+     
+     扩展性：Role 中的 secret 和 selfClueId 需在后续搜证功能中易于调用。
+     
+     输出内容：请先给出后端核心 Controller 和 Service 及其相关的实现代码，再给出前端核心组件的代码示例。
+     ```
+   
+     ```
+     # Task
+     请基于提供的模型，分模块实现以下核心功能，确保代码符合 Clean Architecture 原则：
+     
+     1. 房间生命周期管理 (Domain Logic & REST)
+     剧本筛选: 实现 ScriptService.getRandomScripts(int limit)。使用 MongoDB 的 $sample 聚合操作随机获取剧本。
+     
+     房间初始化: 实现 createRoom 逻辑。初始化 GameRoom 为 WAITING 状态。
+     
+     自动化选角 (The Auto-Fill Logic):
+     
+     玩家选定 roleId 后，系统需自动扫描该剧本剩余角色。
+     
+     为所有空余角色创建 Member 实体，设置 isAi=true。
+     
+     区分 isNpc（如 DM）和普通玩家角色。
+     
+     状态流转: 当房间内所有角色（真人+AI）分配完毕，房间状态变更为 PLAYING。
+     
+     2. 实时通信与消息路由 (WebSocket & Redis)
+     STOMP 安全:
+     
+     配置 WebSocketMessageBrokerConfigurer。
+     
+     在 ChannelInterceptor 中校验 JWT，并验证 userId 是否属于 roomId。
+     
+     消息存储策略:
+     
+     玩家发言后，消息先通过 Redis List 或 ZSet 存储（Key 结构：game:chat:{roomId}），保证实时读写性能。
+     
+     同步逻辑: 实现一个监听器或定时任务，在游戏结束（FINISHED）时将 Redis 中的 fullChatLog 批量持久化到 MongoDB。
+     
+     前端适配: 区分发言者。玩家本人消息 align-right，Agent 和其他玩家 align-left。
+     
+     3. Spring AI 代理集成 (Agent Logic)
+     触发机制: 玩家发言存入数据库后，异步触发 AgentService。
+     
+     智能回复:
+     
+     从 GameRoom 和 ScriptStage 获取当前上下文。
+     
+     提取对应 Role 的 prompt 和 secret。
+     
+     使用 Spring AI 的 ChatClient 调用 LLM，生成符合角色人设的回复。
+     
+     回复消息通过 WebSocket 再次广播，roleId 标记为 Agent。
+     
+     4. 前端页面流转 (Vue 3 HomeView)
+     多功能看板: 修改 HomeView.vue，实现左侧侧边栏（游戏、创作、上传）。
+     
+     剧本/角色墙布局:
+     
+     剧本墙: 2x4 响应式网格，空位显示 placeholder 图片。
+     
+     角色墙算法: 实现动态行计算（<=5 一行，<=10 两行，>10 三行）。
+     
+     状态驱动 UI: 使用单一状态变量（如 currentStep: 'LOBBY' | 'SELECTING_SCRIPT' | 'SELECTING_ROLE' | 'GAMING'）切换界面组件。
+     
+     游戏逻辑: 实现“开始游戏”按钮的置灰逻辑（必须选完剧本和角色）。
+     
+     # Requirements
+     
+     Service 层解耦: 不要将所有逻辑写在 Controller，创建 GameFlowService 处理状态机。
+     
+     错误处理: 后端需有 GlobalExceptionHandler 处理房间已满、权限不足等业务异常。
+     
+     性能: 使用 Redis 缓解 MongoDB 的频繁写入压力。
+     
+     输出内容:
+     
+     第一步：给出后端核心配置（WebSocket, Security）及 Service 类。
+     
+     第二步：给出 Vue 3 核心状态管理及组件模板。
+     ```
+   
+   * 修改 Stricp 和 clude、stage，role 的 entity
+   
+     ```
+     @Document(collection = "scripts")
+     @Data
+     public class Script {
+         @Id
+         private String id; // 建议用 String，方便前端和缓存处理
+     
+         @NotBlank
+         private String title;
+         private String description;
+         private ScriptDifficulty difficulty;
+         private int playerCount;
+         private String coverImage;
+     
+         // --- 核心内嵌数据 ---
+     
+         // 1. 角色库：AI Agent 的灵魂都在这里
+         private List<Role> roles; 
+     
+         // 2. 线索库：存储所有静态线索定义
+         private List<Clue> clues; 
+     
+         // 3. 阶段流转：定义每一幕解锁什么，内容是什么
+         private List<ScriptStage> stages;
+     
+         // --- 其他配置 ---
+         private Map<String, Object> dmConfig; // 存储 DM AI 的全局设定
+         private int version = 1;
+     }
+     ```
+   
+     ```
+     @Data
+     public class Role {
+         private String id; // 在剧本内部唯一的 ID，如 "ROLE_001"
+         private String name;
+         private String avatar;
+         private boolean isNpc;
+         
+         // --- AI 相关 ---
+         private String prompt;    // AI 核心人设指令
+         private String secret;    // 不可泄露的秘密
+         
+         // --- 游戏机制相关 ---
+         private List<String> selfClueIds; // 角色自带的线索 ID
+         private String locationTag;       // 该角色初始所在的地点（用于搜证）
+         private int searchPower;          // 初始行动力
+     }
+     ```
+   
+     ```
+     @Data
+     public class Clue {
+         private String id; // 剧本内唯一 ID，如 "CLUE_001"
+         private String title;
+         private ClueType type; // TEXT, IMAGE, AUDIO
+         private String content;
+         private String imageUrl;
+         
+         // 控制逻辑
+         private boolean isInitialHidden = true; // 是否初始隐藏
+         private List<String> searchableRoleIds; // 哪些角色可以搜到这个线索
+         private String locationTag;             // 所在地点
+     }
+     ```
+   
+     ```
+     @Data
+     public class ScriptStage {
+         private int stageNumber;
+         private String stageTitle;
+         
+         /**
+          * Key: roleId (角色的 ID)
+          * Value: 该阶段该角色看到的剧本内容（包含 AI 需要知道的本幕任务）
+          */
+         private Map<String, String> contentMap;
+         
+         private String audioUrl; // 本幕 BGM 或开场白
+     
+         /**
+          * 重点：本阶段“解锁”的线索 ID 列表
+          * 当游戏进入这一幕时，逻辑上将这些 ID 加入 GameRoom 的可搜索池
+          */
+         private List<String> unlockClueIds; 
+     }
+     ```
+     ```
+      不再需要 GameRoom entity，你现在需要确保代码的流程正确：用户创建房间->随机选择八个剧本（无需加载全部信息）->用户选择剧本->用户开始游戏->将已选择的剧本所有内容加载到redis->用户选择角色->用户开始游戏  
+      ->用户当前幕剧本->用户发言->...（用户可以持续发言）->下一幕开始（需要判断条件或用户决定开始下一幕）-> ...(用户可持续发言)-> ...直到所有的幕结束或用户选择退出或用户长时间离开 -> 游戏结束 ->           
+      总结所有内容（这里目前只需要接口）-> 将该用户在 redis 中的游戏信息如 已经加载的 Script 信息和 LiveGameRoom 等信息进行回收。注意，用户在同一时间只能加入一个游戏。
+     ```
+   
+   * Stage2 AI 驱动的剧本杀引擎
+   
+     ```
+     # Role
+     你是一位顶级全栈架构师，精通 Spring AI (Function Calling)、Multi-Agent 系统设计、WebSocket (STOMP) 以及 MongoDB/Redis。你擅长构建高并发、强状态逻辑的游戏后端，并能优雅地解决 LLM 的长文本上下文压缩问题。
+     
+     # Context
+     项目是一款“剧本杀”游戏，核心是 “Harness 模式”：
+     
+     AI DM (主持人)：掌握全局，拥有上帝视角，负责推进流程、审批玩家动作（搜证/投票）。
+     
+     AI Agents (角色)：扮演剧本中的 NPC 或剩余玩家位，拥有各自的秘密（Secret）和人设（Prompt）。
+     
+     真人玩家：通过前端 UI 与 AI 们实时对话和互动。
+     
+     # Task: 实现核心驱动引擎
+     
+     1. 自动化 Agent 分配与初始化 (AgentOrchestrator)
+     逻辑：实现一个 Service，当真人玩家选定角色后：
+     
+     查询 Script 中所有 Role。
+     
+     为每个未占用的 Role 创建 Member 实体（isAi=true）。
+     
+     强制生成一个 isDm=true, isAi=true 的成员。
+     
+     隔离性：确保每个 Member 只能读取其对应 Role 的 prompt 和当前/历史 ScriptStage 内容。
+     
+     2. AI DM 工具箱 (Function Calling)
+     请使用 Spring AI 的 FunctionCallback 机制为 DM Agent 实现以下工具，你也可以加入你认为合适的工具：
+     
+     authorizeSearch(roomId, roleId, location)：
+     
+     校验玩家 searchPower 和地点开放情况或时间节点，由 AI DM 选择是否可以进行搜证，如果包含多个证据，由 DM 根据剧本来决定 Agent 或玩家可以选择一条或 n 条证据。
+     
+     成功则从 cluePool 分发线索，并通过 WebSocket 推送。
+     
+     initiateVote(roomId, title, options)：
+     
+     开启投票状态机，前端弹出投票框。
+     
+     readFullScript(roomId, queryType)：
+     
+     允许 DM 查阅 Redis 中缓存的剧本完整真相（SECRET），但禁止直接复述原文。
+     
+     3. 上下文压缩与长程记忆 (MemoryManager)
+     压缩触发器：每一幕 (ScriptStage) 结束时，对于 Agent role，调用 Spring AI 将本幕 GameMessages 摘要为“关键事件碎片”（如：A 怀疑 B 有匕首）。
+     
+     动态 Prompt 构造：
+     
+     Final Prompt = [全局人设] + [历史各幕摘要] + [当前幕任务] + [最近 N 条对话]。
+     
+     确保 AI 不会因为对话过长而“失忆”或突破 Token 限制。
+     
+     
+     
+     4. 实时通讯流 (Communication Loop)
+     后端路由：/app/chat.{roomId} 接收消息 -> 存入 Redis -> 异步触发 AI 响应。
+     
+     AI 响应逻辑：
+     
+     如果是玩家对 DM 说话，触发 DM。
+     
+     如果是公屏发言，根据算法（或随机，或根据关键词）触发一个或多个 AI Agent 回复。
+     
+     UI 渲染策略：通过 isAi, isDm, roleId 标签让前端识别气泡位置和颜色。
+     
+     5. 游戏结算与复盘 (FinalReviewService)
+     玩家点击“结束游戏”后，DM 调用 DefaultGameSummaryService。
+     
+     生成复盘报告：包含全场表现、秘密真相揭露、AI 生成的剧情评价，存入 GameRecord。
+     
+     # Requirements for Output
+     
+     Java 实现：给出 DmToolService 类（处理搜证/投票逻辑）和 Spring AI 配置类。
+     
+     AI 指令设计：
+     
+     设计 DM Agent 的 System Prompt（强调其“裁判”与“叙事者”的双重身份）。
+     
+     设计 Player Agent 的 System Prompt（强调“保护秘密”与“角色扮演”）。
+     
+     上下文压缩逻辑：给出如何将多轮对话压缩并存入 Redis 的代码示例。
+     ```
+   
+     

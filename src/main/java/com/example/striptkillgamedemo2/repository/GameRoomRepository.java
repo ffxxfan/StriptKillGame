@@ -10,4 +10,7 @@ import java.util.List;
 public interface GameRoomRepository extends MongoRepository<GameRoom, ObjectId> {
 
     List<GameRoom> findByStatus(GameRoomStatus status);
+
+    GameRoom getGameRoomByRoomId(ObjectId roomId);
+
 }

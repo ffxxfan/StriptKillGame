@@ -32,28 +32,20 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Document(collection = "roles")
 public class Role {
-    @Id
-    private ObjectId id;
-
-    @Indexed
-    private ObjectId scriptId;
-
+    @NotBlank
+    private ObjectId id; // 在剧本内部唯一的 ID，如 "ROLE_001"
     @NotBlank
     private String name;
-
     private String avatar;
+    private boolean isNpc;
 
-    private boolean isNpc = false;
+    // --- AI 相关 ---
+    private String prompt;    // AI 核心人设指令
+    private String secret;    // 不可泄露的秘密
 
-    private String prompt;
-
-    private String secret;
-
-    private List<ObjectId> selfClueIds;
-
-    private String locationTag;
-
-    private Integer searchPower;
+    // --- 游戏机制相关 ---
+    private List<String> selfClueIds; // 角色自带的线索 ID
+    private String locationTag;       // 该角色初始所在的地点（用于搜证）
+    private int searchPower;          // 初始行动力
 }

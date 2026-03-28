@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.redis;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,8 +15,11 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GameMessage {
-    private String messageId;
+    @NotBlank
+    private ObjectId messageId;
+    @NotBlank
     private ObjectId gameRoomId;
+    @NotBlank
     private ObjectId senderRoleId;
     private boolean isAi;
     private String senderRoleName;

@@ -229,7 +229,7 @@ async function handleLogout() {
 // ======================== 导航 ========================
 
 function goHome() {
-  router.push('/')
+  router.push('/home')
 }
 </script>
 

@@ -152,7 +152,7 @@ async function handleLogin() {
     const { data } = await login(loginForm.username, loginForm.password)
     authStore.setTokens(data.accessToken, data.refreshToken)
     ElMessage.success('登录成功')
-    router.push('/')
+    router.push('/home')
   } catch (error: any) {
     const msg = error.response?.data?.message || '登录失败'
     ElMessage.error(msg)

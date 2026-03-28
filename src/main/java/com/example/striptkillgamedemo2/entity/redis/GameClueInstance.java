@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.redis;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,7 +28,9 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 public class GameClueInstance {
-    private String id;
+    @NotBlank
+    private ObjectId id;
+    @NotBlank
     private ObjectId clueId;
     private List<ObjectId> ownerRoleIds;
     private boolean isPublic;

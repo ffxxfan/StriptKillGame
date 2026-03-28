@@ -2,7 +2,7 @@ package com.example.striptkillgamedemo2.controller;
 
 import com.example.striptkillgamedemo2.dto.ChatMessageRequest;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
-import com.example.striptkillgamedemo2.entity.mongo.GameRoom;
+import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.GameChatService;
 import com.example.striptkillgamedemo2.service.GameRoomService;
 import io.jsonwebtoken.Claims;
@@ -39,10 +39,8 @@ public class GameChatController {
 
         Claims claims = (Claims) auth.getPrincipal();
         ObjectId userId = new ObjectId(claims.getSubject());
-        ObjectId rid = new ObjectId(roomId);
 
-        // Room membership and status check
-        GameRoom room = gameRoomService.getRoom(rid);
+        LiveGameRoom room = gameRoomService.getRoom(roomId);
         gameRoomService.validateMembership(room, userId);
 
         if (room.getStatus() != GameRoomStatus.PLAYING) {
@@ -50,7 +48,7 @@ public class GameChatController {
             return;
         }
 
-        ObjectId senderRoleId = gameChatService.findRoleIdForUser(room, userId);
-        gameChatService.sendMessage(rid, senderRoleId, request.getContent());
+        ObjectId senderRoleId = gameRoomService.findRoleIdForUser(room, userId);
+        gameChatService.sendMessage(roomId, senderRoleId, request.getContent(), room);
     }
 }
