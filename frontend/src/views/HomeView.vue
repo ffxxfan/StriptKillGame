@@ -1,123 +1,221 @@
 <template>
   <div class="home-container">
-    <!-- 顶部导航栏 -->
-    <el-header class="top-bar">
-      <div class="logo">
-        <h3>剧本杀</h3>
+    <!-- Header -->
+    <header class="home-header">
+      <div class="header-left">
+        <span class="logo-text">剧本杀</span>
       </div>
-      <div class="user-area" @click="goProfile">
-        <el-avatar
-          :size="36"
-          :src="authStore.userInfo?.avatarUrl || ''"
-        >
-          <el-icon :size="20"><UserFilled /></el-icon>
+      <div class="header-right" @click="router.push('/profile')" style="cursor: pointer;">
+        <el-avatar :size="36" :src="authStore.userInfo?.avatarUrl">
+          <el-icon><UserFilled /></el-icon>
         </el-avatar>
-        <span class="username">{{ authStore.userInfo?.nickname || '用户' }}</span>
+        <span class="nickname">{{ authStore.userInfo?.nickname || '玩家' }}</span>
       </div>
-    </el-header>
+    </header>
 
-    <!-- 主内容区：预留给后续功能 -->
-    <el-main class="main-content">
-      <slot name="main-content">
-        <!-- 默认占位内容 -->
-        <div class="placeholder">
-          <el-empty description="游戏功能即将上线，敬请期待">
-            <template #image>
-              <div class="placeholder-icon">
-                <el-icon :size="120" color="#c0c4cc"><Histogram /></el-icon>
-              </div>
-            </template>
-          </el-empty>
+    <!-- Body -->
+    <div class="home-body">
+      <!-- Sidebar -->
+      <aside class="home-sidebar">
+        <div
+          v-for="item in menuItems"
+          :key="item.key"
+          class="sidebar-item"
+          :class="{ active: activeMenu === item.key }"
+          @click="activeMenu = item.key"
+        >
+          <el-icon :size="20"><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
         </div>
-      </slot>
-    </el-main>
+      </aside>
+
+      <!-- Content -->
+      <main class="home-content">
+        <!-- 剧本杀游戏 -->
+        <div v-if="activeMenu === 'game'" class="content-panel">
+          <div class="panel-header">
+            <h2>剧本杀游戏</h2>
+            <p>选择剧本，邀请好友，开始一场烧脑之旅</p>
+          </div>
+          <div class="panel-body">
+            <el-empty description="点击右下角创建房间，开始游戏" />
+          </div>
+          <div class="panel-footer">
+            <el-button type="primary" size="large" @click="handleCreateRoom" :loading="creating">
+              创建房间
+            </el-button>
+          </div>
+        </div>
+
+        <!-- 剧本杀创作 -->
+        <div v-else-if="activeMenu === 'create'" class="content-panel">
+          <div class="panel-body placeholder">
+            <el-empty description="剧本创作功能即将上线，敬请期待" />
+          </div>
+        </div>
+
+        <!-- 剧本杀上传 -->
+        <div v-else-if="activeMenu === 'upload'" class="content-panel">
+          <div class="panel-body placeholder">
+            <el-empty description="剧本上传功能即将上线，敬请期待" />
+          </div>
+        </div>
+      </main>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, onMounted, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
-import { UserFilled, Histogram } from '@element-plus/icons-vue'
+import { UserFilled, Opportunity, EditPen, UploadFilled } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
+import { useGameStore } from '../stores/game'
 import { getUserInfo } from '../api/auth'
+import { createRoom } from '../api/room'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const gameStore = useGameStore()
 
-/** 跳转到用户信息页 */
-function goProfile() {
-  router.push('/profile')
-}
+const activeMenu = ref('game')
+const creating = ref(false)
 
-/** 加载用户信息 */
+const menuItems = [
+  { key: 'game', label: '剧本杀游戏', icon: markRaw(Opportunity) },
+  { key: 'create', label: '剧本杀创作', icon: markRaw(EditPen) },
+  { key: 'upload', label: '剧本杀上传', icon: markRaw(UploadFilled) },
+]
+
 onMounted(async () => {
-  if (!authStore.userInfo) {
-    try {
-      const { data } = await getUserInfo()
-      authStore.setUserInfo(data)
-    } catch {
-      // 拦截器会处理 401
-    }
+  try {
+    const { data } = await getUserInfo()
+    authStore.setUserInfo(data)
+  } catch (e) {
+    // handled by interceptor
   }
 })
+
+async function handleCreateRoom() {
+  creating.value = true
+  try {
+    const { data } = await createRoom()
+    gameStore.setRoom(data.roomId)
+    router.push(`/game/${data.roomId}/scripts`)
+  } catch (e) {
+    console.error('创建房间失败', e)
+  } finally {
+    creating.value = false
+  }
+}
 </script>
 
 <style scoped>
 .home-container {
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  background: #1a1a2e;
+  color: #e0e0e0;
 }
 
-.top-bar {
+.home-header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  height: 56px;
-  z-index: 10;
+  align-items: center;
+  padding: 12px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
 }
 
-.logo h3 {
-  margin: 0;
-  color: #303133;
-  font-size: 20px;
+.header-left .logo-text {
+  font-size: 22px;
+  font-weight: bold;
+  color: #e94560;
 }
 
-.user-area {
+.header-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
-  padding: 4px 12px;
-  border-radius: 8px;
-  transition: background-color 0.2s;
 }
 
-.user-area:hover {
-  background-color: #f5f7fa;
-}
-
-.username {
+.nickname {
   font-size: 14px;
-  color: #606266;
+  color: #a0a0b0;
 }
 
-.main-content {
+.home-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.home-sidebar {
+  width: 200px;
+  background: #16213e;
+  padding: 16px 0;
+  border-right: 1px solid #0f3460;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #a0a0b0;
+}
+
+.sidebar-item:hover {
+  background: #1a1a40;
+  color: #fff;
+}
+
+.sidebar-item.active {
+  background: #0f3460;
+  color: #e94560;
+  border-right: 3px solid #e94560;
+}
+
+.home-content {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.content-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  margin-bottom: 24px;
+}
+
+.panel-header h2 {
+  font-size: 24px;
+  color: #fff;
+  margin: 0 0 8px;
+}
+
+.panel-header p {
+  color: #a0a0b0;
+  margin: 0;
+}
+
+.panel-body {
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
 }
 
-.placeholder {
-  text-align: center;
-}
-
-.placeholder-icon {
-  opacity: 0.5;
+.panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 0;
 }
 </style>
