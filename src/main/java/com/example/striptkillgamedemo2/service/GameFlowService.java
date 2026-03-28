@@ -107,12 +107,22 @@ public class GameFlowService {
         GameRoom room = gameRoomRepository.findById(roomId)
                 .orElseThrow(() -> new IllegalArgumentException("房间不存在: " + roomId));
 
+        // Guard: prevent double execution
+        if (room.getStatus() == GameRoomStatus.FINISHED) {
+            log.info("Room {} already finished, skipping endGame", roomId);
+            return room;
+        }
+
+        boolean wasPlaying = room.getStatus() == GameRoomStatus.PLAYING;
+
         room.setStatus(GameRoomStatus.FINISHED);
         room.setEndTime(LocalDateTime.now());
         GameRoom saved = gameRoomRepository.save(room);
 
-        // Flush chat messages to GameRecord
-        gameChatService.flushMessages(roomId, room);
+        // Only flush chat and create GameRecord if the game was actually played
+        if (wasPlaying) {
+            gameChatService.flushMessages(roomId, room);
+        }
 
         // Clean up Redis keys
         String roomKey = roomId.toHexString();

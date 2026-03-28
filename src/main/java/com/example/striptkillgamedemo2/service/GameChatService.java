@@ -18,6 +18,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.List;
 import java.util.UUID;
 
@@ -83,6 +84,7 @@ public class GameChatService {
         return room.getMembers().stream()
                 .filter(m -> m.getUserId() != null && m.getUserId().equals(userId))
                 .map(Member::getRoleId)
+                .filter(Objects::nonNull)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("你不在该房间中或未选择角色"));
     }
