@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class VoteRecord {
-    private String id;
+    private ObjectId id;
     private ObjectId gameRoomId;
     private ObjectId voterUserId;
     private int stageNumber;
