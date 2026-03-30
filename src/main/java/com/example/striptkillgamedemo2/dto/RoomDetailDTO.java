@@ -1,6 +1,7 @@
 package com.example.striptkillgamedemo2.dto;
 
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,8 +30,11 @@ public class RoomDetailDTO {
         private String roleId;
         private String roleName;
         private String roleAvatar;
+        @JsonProperty("isAi")
         private boolean isAi;
+        @JsonProperty("isDm")
         private boolean isDm;
+        @JsonProperty("isOnline")
         private boolean isOnline;
     }
 }

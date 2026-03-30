@@ -60,7 +60,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Opportunity, Lock } from '@element-plus/icons-vue'
 import { getRandomScripts } from '../api/script'
-import { selectScript } from '../api/room'
+import { getRoom, selectScript } from '../api/room'
 import { useGameStore } from '../stores/game'
 
 interface ScriptItem {
@@ -91,6 +91,17 @@ const displayScripts = computed(() => {
 
 onMounted(async () => {
   try {
+    // Guard: redirect if room is no longer WAITING
+    const { data: room } = await getRoom(roomId)
+    if (room.status === 'PLAYING') {
+      router.replace(`/game/${roomId}/play`)
+      return
+    }
+    if (room.status === 'FINISHED') {
+      router.replace('/home')
+      return
+    }
+
     const { data } = await getRandomScripts()
     scripts.value = data
   } catch (e) {

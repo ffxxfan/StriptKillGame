@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.mongo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -26,10 +27,13 @@ public class Member {
     private ObjectId userId;
     private ObjectId roleId;
     @Field("isAi")
+    @JsonProperty("isAi")
     private boolean isAi = false;
     @Field("isDm")
+    @JsonProperty("isDm")
     private boolean isDm = false;
     @Field("isOnline")
+    @JsonProperty("isOnline")
     private boolean isOnline = true;
     private String description; // 如果是 AI 则表示扮演的性格
 }

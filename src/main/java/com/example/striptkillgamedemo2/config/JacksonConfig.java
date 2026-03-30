@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.bson.types.ObjectId;
 import org.springframework.boot.autoconfigure.jackson.Jackson2ObjectMapperBuilderCustomizer;
 import org.springframework.context.annotation.Bean;
@@ -20,20 +21,30 @@ public class JacksonConfig {
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer objectIdJacksonCustomizer() {
         return builder -> {
-            SimpleModule module = new SimpleModule("ObjectIdModule");
-            module.addSerializer(ObjectId.class, new JsonSerializer<>() {
+            // Explicitly register JavaTimeModule to ensure LocalDateTime serializes correctly
+            builder.modulesToInstall(new JavaTimeModule());
+
+            SimpleModule objectIdModule = new SimpleModule("ObjectIdModule");
+            objectIdModule.addSerializer(ObjectId.class, new JsonSerializer<>() {
                 @Override
                 public void serialize(ObjectId value, JsonGenerator gen, SerializerProvider s) throws IOException {
                     gen.writeString(value.toHexString());
                 }
             });
-            module.addDeserializer(ObjectId.class, new JsonDeserializer<>() {
+            objectIdModule.addDeserializer(ObjectId.class, new JsonDeserializer<>() {
                 @Override
                 public ObjectId deserialize(JsonParser p, DeserializationContext ctx) throws IOException {
-                    return new ObjectId(p.getText());
+                    String text = p.getText();
+                    if (text == null || text.isBlank()) return null;
+                    return new ObjectId(text);
                 }
             });
-            builder.modules(module);
+            builder.modulesToInstall(objectIdModule);
+
+            // Write LocalDateTime as ISO-8601 string, not array
+            builder.featuresToDisable(
+                    com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS
+            );
         };
     }
 }

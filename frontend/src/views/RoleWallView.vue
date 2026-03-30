@@ -46,7 +46,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getRoles, selectRole, startGame } from '../api/room'
+import { getRoom, getRoles, selectRole, startGame } from '../api/room'
 import { useGameStore } from '../stores/game'
 
 interface RoleItem {
@@ -75,6 +75,17 @@ const gridClass = computed(() => {
 
 onMounted(async () => {
   try {
+    // Guard: redirect if room is no longer WAITING
+    const { data: room } = await getRoom(roomId)
+    if (room.status === 'PLAYING') {
+      router.replace(`/game/${roomId}/play`)
+      return
+    }
+    if (room.status === 'FINISHED') {
+      router.replace('/home')
+      return
+    }
+
     const { data } = await getRoles(roomId)
     roles.value = data
   } catch (e) {

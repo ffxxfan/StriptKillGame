@@ -26,11 +26,13 @@ public class GameRoomService {
     private final ScriptCacheService scriptCacheService;
     private final ScriptRepository scriptRepository;
 
-    /** Create room. Fails if user already has an active game. */
+    /** Create room. Cleans up any existing active room for this user first. */
     public LiveGameRoom createRoom(ObjectId userId) {
         String existing = liveGameRoomService.getActiveRoomId(userId);
         if (existing != null) {
-            throw new IllegalStateException("你已经在游戏房间 " + existing + " 中，请先退出");
+            log.info("User {} has existing room {}, cleaning up before creating new room", userId, existing);
+            liveGameRoomService.evict(new ObjectId(existing));
+            liveGameRoomService.unbindUserRoom(userId);
         }
 
         String roomId = new ObjectId().toHexString();

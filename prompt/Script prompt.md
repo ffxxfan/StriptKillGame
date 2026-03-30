@@ -429,4 +429,97 @@
      上下文压缩逻辑：给出如何将多轮对话压缩并存入 Redis 的代码示例。
      ```
    
+     ```
+     # Role
+     你是一位顶级全栈架构师，精通 Spring AI (Function Calling)、Multi-Agent 系统设计、WebSocket (STOMP) 以及 MongoDB/Redis。你擅长构建高并发、强状态逻辑的游戏后端，并能优雅地解决 LLM 的长文本上下文压缩问题。
+     
+     # Context
+     项目是一款“剧本杀”游戏，核心是 “Harness 模式”。
+     - **AI DM (主持人)**：上帝视角，负责推进流程、审批动作（搜证/投票）。
+     - **AI Agents (角色)**：扮演剧本角色，拥有秘密(Secret)和独立人设。
+     - **配置化**：所有系统指令（System Prompt）和压缩模板需支持动态加载。
+     
+     # Task: 实现核心驱动引擎
+     
+     ### 1. 自动化 Agent 分配 (AgentOrchestrator)
+     - 实现 Service 逻辑：玩家选角后，自动为剩余 Role 创建 `isAi=true` 的 `Member`。
+     - **强制初始化**：生成一个 `isDm=true, isAi=true` 的成员作为全局裁判。
+     - **沙箱隔离**：设计一个上下文包装器，确保 Agent 在构造 Prompt 时，无法越权访问其他角色的 `Secret`。
+     
+     ### 2. 增强型 DM 工具箱 (Function Calling)
+     利用 Spring AI 的 `FunctionCallback` 实现以下工具，需保证操作的**原子性**：
+     - **`authorizeSearch(roomId, roleId, location)`**：
+         - **逻辑**：校验 `searchPower` 和当前阶段开放性。
+         - **多线索处理**：若地点有多个线索，AI 先调用此工具获取“线索摘要清单”，根据剧本逻辑决定分发哪几条。
+         - **副作用**：扣除 `searchPower`，更新 `cluePool` 状态，并通过 WebSocket `convertAndSendToUser` 推送线索详情。
+     - **`initiateVote(roomId, title, options)`**：
+         - 开启投票状态机，变更 `GameRoom.status`，广播投票 UI 信令。
+     - **`readFullScript(roomId, queryType)`**：
+         - 允许 DM 查阅剧本真相，但指令中需强制 AI 只能以“引导者”口吻回复，严禁剧透原文。
+     
+     ### 3. 上下文压缩与分层记忆 (MemoryManager)
+     - **压缩触发器**：每一幕结束或 Token 接近上限时，触发摘要任务。
+     - **存储策略**：将“关键事件碎片”存入 Redis（如：角色关系变更、已揭露谎言）。
+     - **动态构造**：`Final Prompt = [全局设定] + [历史碎片(JSON摘要)] + [当前幕任务] + [最近 N 条对话滑动窗口]`。
+     
+     ### 4. 异步通讯循环 (Communication Loop)
+     - **非阻塞架构**：`/app/chat.{roomId}` 接收消息后立即存入 Redis 队列并返回。
+     - **智能分发器**：
+         - 若玩家 @DM 或提出申请，仅触发 DM。
+         - 公屏发言：由 `AgentOrchestrator` 根据发言内容的相关性，随机或按权重选择 1-2 个 Agent 异步回复。
+     - **UI 状态同步**：所有 AI 动作（正在输入、工具调用中、搜证成功）需有明确的信令通知前端。
+     
+     ### 5. 复盘总结 (FinalReviewService)
+     - 游戏结束时，汇总 `GameMessages` 和 `cluePool` 状态。
+     - AI 生成：角色表现评分、未解之谜揭秘、剧情总结。
+     
+     # Requirements for Output
+     1. **Java 实现**：
+        - 提供 `DmToolService`（包含搜证分发逻辑）。
+        - 提供 Spring AI 结合工具调用的配置类（`@Bean` 方式）。
+     2. **AI 指令设计**：
+        - 提供 DM 的 System Prompt（包含如何判断搜证权力的逻辑）。
+        - 提供 Player Agent 的 System Prompt（强调保护秘密）。
+     3. **压缩代码示例**：演示如何使用 Spring AI 将 List<Message> 压缩为结构化事实并更新 Redis。
+     ```
+   
+     ```
+     # Role
+     你是一位精通逻辑推理的剧本杀专业记录员。你的任务是将当前阶段（Stage）的原始对话记录提炼为“核心事实快照”。
+     
+     # Input
+     - 历史摘要：{{previousSummary}}
+     - 本幕对话流：{{currentChatLogs}}
+     - 已公开线索：{{revealedClues}}
+     
+     # Task
+     请分析对话，提取并更新以下信息，确保逻辑严密且不丢失关键反转：
+     
+     1. **信息暴露清单 (Information Revealed)**:
+        - 哪些玩家的秘密被揭穿了？
+        - 哪些玩家主动交代了关键时间点或动机？
+     2. **怀疑链条 (Suspicion Chain)**:
+        - 当前大家公认的怀疑对象是谁？理由是什么？
+        - 是否存在明显的逻辑矛盾或谎言？
+     3. **关键线索状态 (Clue Status)**:
+        - 本幕中哪个线索起到了决定性作用？
+        - 谁持有关键证物？
+     4. **情感与氛围 (Vibe & Relation)**:
+        - 玩家之间的关系发生了什么变化（如结盟、反目）？
+     
+     # Constraint
+     - 请使用极简的陈述句。
+     - 仅保留对后续推理有实质影响的信息。
+     - **输出格式**：JSON 格式，便于系统解析。
+     
+     # Output Format (JSON)
+     {
+       "summary": "一句话概括本幕进展",
+       "revealedSecrets": ["角色A的秘密B被发现", "..."],
+       "logicalConflicts": ["角色C关于20:00的描述与线索D冲突"],
+       "keyEvidence": "...",
+       "currentSuspicionMap": {"roleId": "怀疑权重0-1"}
+     }
+     ```
+   
      

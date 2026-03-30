@@ -1,5 +1,4 @@
 import { Client } from '@stomp/stompjs'
-import SockJS from 'sockjs-client'
 import { useAuthStore } from '../stores/auth'
 import { ref } from 'vue'
 
@@ -14,8 +13,11 @@ export function useWebSocket() {
       stompClient.deactivate()
     }
 
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const host = window.location.host
+
     stompClient = new Client({
-      webSocketFactory: () => new SockJS('/ws'),
+      brokerURL: `${protocol}://${host}/ws`,
       connectHeaders: {
         Authorization: `Bearer ${authStore.accessToken}`
       },

@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.mongo;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -38,6 +39,7 @@ public class Role {
     @NotBlank
     private String name;
     private String avatar;
+    @JsonProperty("isNpc")
     private boolean isNpc;
 
     // --- AI 相关 ---

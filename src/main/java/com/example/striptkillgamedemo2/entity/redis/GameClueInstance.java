@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.redis;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -33,7 +34,9 @@ public class GameClueInstance {
     @NotBlank
     private ObjectId clueId;
     private List<ObjectId> ownerRoleIds;
+    @JsonProperty("isPublic")
     private boolean isPublic;
+    @JsonProperty("isFound")
     private boolean isFound = false;
     private LocalDateTime discoveredAt;
 }

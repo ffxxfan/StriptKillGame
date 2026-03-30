@@ -1,6 +1,7 @@
 package com.example.striptkillgamedemo2.entity.mongo;
 
 import com.example.striptkillgamedemo2.entity.enums.ClueType;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -38,6 +39,7 @@ public class Clue {
     private String imageUrl;
 
     // 控制逻辑
+    @JsonProperty("isInitialHidden")
     private boolean isInitialHidden = true; // 是否初始隐藏
     private List<String> searchableRoleIds; // 哪些角色可以搜到这个线索
     private List<String> locationTag;             // 所在地点

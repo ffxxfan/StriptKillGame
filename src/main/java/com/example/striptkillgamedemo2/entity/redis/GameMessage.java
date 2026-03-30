@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.entity.redis;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -21,6 +22,7 @@ public class GameMessage {
     private ObjectId gameRoomId;
     @NotBlank
     private ObjectId senderRoleId;
+    @JsonProperty("isAi")
     private boolean isAi;
     private String senderRoleName;
     private String senderAvatar;
