@@ -2,6 +2,7 @@ package com.example.striptkillgamedemo2.entity.redis;
 
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
 import com.example.striptkillgamedemo2.entity.mongo.Member;
+import com.example.striptkillgamedemo2.entity.redis.VoteSession;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,4 +44,8 @@ public class LiveGameRoom {
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private String configuration;
+
+    private int currentPhaseIndex;
+    private String currentSpeakerRoleId;
+    private VoteSession activeVote;
 }

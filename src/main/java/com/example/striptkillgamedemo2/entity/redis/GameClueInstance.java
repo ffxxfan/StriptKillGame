@@ -30,7 +30,7 @@ import java.util.List;
 @AllArgsConstructor
 public class GameClueInstance {
     @NotBlank
-    private ObjectId id;
+    private String id;
     @NotBlank
     private ObjectId clueId;
     private List<ObjectId> ownerRoleIds;
