@@ -10,8 +10,9 @@ class GameClueInstanceTest {
 
     @Test
     void gameClueInstanceShouldHaveRequiredFields() {
+        ObjectId instanceId = new ObjectId();
         GameClueInstance instance = GameClueInstance.builder()
-                .id("game:123:clue:456")
+                .id(instanceId)
                 .clueId(new ObjectId())
                 .ownerRoleIds(List.of(new ObjectId()))
                 .isPublic(false)
@@ -19,7 +20,7 @@ class GameClueInstanceTest {
                 .discoveredAt(LocalDateTime.now())
                 .build();
 
-        assertEquals("game:123:clue:456", instance.getId());
+        assertEquals(instanceId, instance.getId());
         assertNotNull(instance.getClueId());
         assertFalse(instance.isPublic());
         assertTrue(instance.isFound());

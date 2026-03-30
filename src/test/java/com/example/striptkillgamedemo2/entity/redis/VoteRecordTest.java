@@ -9,8 +9,9 @@ class VoteRecordTest {
 
     @Test
     void voteRecordShouldHaveRequiredFields() {
+        ObjectId voteId = new ObjectId();
         VoteRecord vote = VoteRecord.builder()
-                .id("vote:123")
+                .id(voteId)
                 .gameRoomId(new ObjectId())
                 .voterUserId(new ObjectId())
                 .stageNumber(2)
@@ -21,7 +22,7 @@ class VoteRecordTest {
                 .timestamp(LocalDateTime.now())
                 .build();
 
-        assertEquals("vote:123", vote.getId());
+        assertEquals(voteId, vote.getId());
         assertNotNull(vote.getGameRoomId());
         assertNotNull(vote.getVoterUserId());
         assertEquals(2, vote.getStageNumber());
