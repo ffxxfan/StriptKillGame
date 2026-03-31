@@ -431,7 +431,7 @@
    
      ```
      # Role
-     你是一位顶级全栈架构师，精通 Spring AI (Function Calling)、Multi-Agent 系统设计、WebSocket (STOMP) 以及 MongoDB/Redis。你擅长构建高并发、强状态逻辑的游戏后端，并能优雅地解决 LLM 的长文本上下文压缩问题。
+     你是一位顶级全栈架构师，精通 Spring AI (Function Calling)、Multi-Agent 系统设计、WebSocket (STOMP) 以及 MongoDB/Redis。你擅长构建高并发、强状态逻辑的游戏后端，并能优雅地解决 LLM 的长文本上下文压缩问题，现在为已有项目添加新的功能。
      
      # Context
      项目是一款“剧本杀”游戏，核心是 “Harness 模式”。

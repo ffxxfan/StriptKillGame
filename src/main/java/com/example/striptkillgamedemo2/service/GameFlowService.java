@@ -1,14 +1,19 @@
 package com.example.striptkillgamedemo2.service;
 
+import com.example.striptkillgamedemo2.ai.memory.MemoryManager;
 import com.example.striptkillgamedemo2.ai.review.FinalReviewService;
 import com.example.striptkillgamedemo2.dto.StageContentDTO;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
+import com.example.striptkillgamedemo2.entity.enums.PhaseType;
 import com.example.striptkillgamedemo2.entity.mongo.GameRecord;
 import com.example.striptkillgamedemo2.entity.mongo.Member;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
 import com.example.striptkillgamedemo2.entity.mongo.ScriptStage;
+import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
+import com.example.striptkillgamedemo2.entity.redis.GameMessage;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.repository.GameRecordRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
@@ -31,6 +36,8 @@ public class GameFlowService {
     private final GameRecordRepository gameRecordRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final FinalReviewService finalReviewService;
+    private final MemoryManager memoryManager;
+    private final ObjectMapper objectMapper;
 
     public LiveGameRoom startGame(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
@@ -52,6 +59,22 @@ public class GameFlowService {
         room.setStatus(GameRoomStatus.PLAYING);
         room.setStartTime(LocalDateTime.now());
         room.setCurrentStage(0);
+
+        // Initialize phase tracking
+        room.setCurrentPhaseIndex(0);
+        room.setCurrentSpeakerRoleId(null);
+        if (script.getStages() != null && !script.getStages().isEmpty()) {
+            ScriptStage firstStage = script.getStages().get(0);
+            if (firstStage.getPhases() != null && !firstStage.getPhases().isEmpty()) {
+                StagePhase firstPhase = firstStage.getPhases().get(0);
+                if (firstPhase.getType() == PhaseType.TURN_BASED
+                        && firstPhase.getSpeakOrder() != null
+                        && !firstPhase.getSpeakOrder().isEmpty()) {
+                    room.setCurrentSpeakerRoleId(firstPhase.getSpeakOrder().get(0));
+                }
+            }
+        }
+
         liveGameRoomService.save(room);
 
         String stageTitle = (script.getStages() != null && !script.getStages().isEmpty())
@@ -109,6 +132,11 @@ public class GameFlowService {
         if (script.getStages() == null || nextStage >= script.getStages().size()) {
             return endGame(roomId);
         }
+
+        // Compress completed stage messages
+        List<GameMessage> stageMessages = deserializeMessages(
+                liveGameRoomService.getMessages(new ObjectId(roomId)));
+        memoryManager.compressStage(roomId, room.getCurrentStage(), stageMessages);
 
         liveGameRoomService.advanceStage(new ObjectId(roomId), nextStage);
         room.setCurrentStage(nextStage);
@@ -184,6 +212,20 @@ public class GameFlowService {
         } catch (Exception e) {
             log.error("Failed to persist GameRecord for room {}", roomId, e);
         }
+    }
+
+    private List<GameMessage> deserializeMessages(List<String> jsonMessages) {
+        return jsonMessages.stream()
+                .map(json -> {
+                    try {
+                        return objectMapper.readValue(json, GameMessage.class);
+                    } catch (Exception e) {
+                        log.warn("Failed to deserialize message", e);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
     }
 
     private LiveGameRoom getPlayableRoom(String roomId) {
