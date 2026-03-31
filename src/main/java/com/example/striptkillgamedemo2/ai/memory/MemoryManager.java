@@ -77,8 +77,7 @@ public class MemoryManager {
         return allMessages.subList(allMessages.size() - windowSize, allMessages.size());
     }
 
-    // Package-private for testing
-    String extractJson(String response) {
+    public String extractJson(String response) {
         if (response.contains("```json")) {
             int start = response.indexOf("```json") + 7;
             int end = response.indexOf("```", start);

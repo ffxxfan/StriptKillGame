@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.service;
 
+import com.example.striptkillgamedemo2.ai.review.FinalReviewService;
 import com.example.striptkillgamedemo2.dto.StageContentDTO;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
 import com.example.striptkillgamedemo2.entity.mongo.GameRecord;
@@ -29,6 +30,7 @@ public class GameFlowService {
     private final GameSummaryService gameSummaryService;
     private final GameRecordRepository gameRecordRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FinalReviewService finalReviewService;
 
     public LiveGameRoom startGame(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
@@ -138,6 +140,8 @@ public class GameFlowService {
 
         if (wasPlaying) {
             persistGameRecord(roomId, room);
+            // Trigger async AI review (must happen before eviction)
+            finalReviewService.generateReview(roomId, room);
         }
 
         // Evict all Redis keys for this room
