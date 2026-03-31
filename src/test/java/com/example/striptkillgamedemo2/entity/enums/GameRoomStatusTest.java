@@ -7,10 +7,10 @@ class GameRoomStatusTest {
 
     @Test
     void enumValuesShouldMatchDesign() {
-        // These are the three states defined in the spec
-        assertEquals(3, GameRoomStatus.values().length);
+        assertEquals(4, GameRoomStatus.values().length);
         assertNotNull(GameRoomStatus.WAITING);
         assertNotNull(GameRoomStatus.PLAYING);
+        assertNotNull(GameRoomStatus.CURRENT_STAGE);
         assertNotNull(GameRoomStatus.FINISHED);
     }
 }

@@ -7,8 +7,9 @@ class ClueTypeTest {
 
     @Test
     void enumShouldHaveTextAndImageTypes() {
-        assertEquals(2, ClueType.values().length);
+        assertEquals(3, ClueType.values().length);
         assertNotNull(ClueType.TEXT);
         assertNotNull(ClueType.IMAGE);
+        assertNotNull(ClueType.VIDEO);
     }
 }
