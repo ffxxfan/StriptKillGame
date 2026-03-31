@@ -54,6 +54,31 @@ public class GameChatService {
         return dto;
     }
 
+    public ChatMessageDTO sendAiMessage(String roomId, ObjectId senderRoleId, String content, LiveGameRoom room) {
+        Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
+        Role curRole = script.getRoles().stream()
+                .filter(r -> Objects.equals(r.getId(), senderRoleId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("角色不存在"));
+
+        GameMessage message = GameMessage.builder()
+                .messageId(new ObjectId())
+                .gameRoomId(new ObjectId(roomId))
+                .senderRoleId(senderRoleId)
+                .isAi(true)
+                .senderRoleName(curRole.getName())
+                .senderAvatar(curRole.getAvatar())
+                .content(content)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        storeMessage(roomId, message);
+
+        ChatMessageDTO dto = toChatDTO(message);
+        messagingTemplate.convertAndSend("/topic/room." + roomId, dto);
+        return dto;
+    }
+
     private void storeMessage(String roomId, GameMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);
