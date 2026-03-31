@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.controller;
 
+import com.example.striptkillgamedemo2.ai.event.ChatMessageEvent;
 import com.example.striptkillgamedemo2.dto.ChatMessageRequest;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
@@ -9,6 +10,7 @@ import io.jsonwebtoken.Claims;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -23,6 +25,7 @@ public class GameChatController {
 
     private final GameChatService gameChatService;
     private final GameRoomService gameRoomService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @MessageMapping("/chat.{roomId}")
     public void handleChatMessage(
@@ -50,5 +53,9 @@ public class GameChatController {
 
         ObjectId senderRoleId = gameRoomService.findRoleIdForUser(room, userId);
         gameChatService.sendMessage(roomId, senderRoleId, request.getContent(), room);
+
+        // Publish event for AI engine
+        eventPublisher.publishEvent(new ChatMessageEvent(
+                this, roomId, senderRoleId, request.getContent(), false));
     }
 }
