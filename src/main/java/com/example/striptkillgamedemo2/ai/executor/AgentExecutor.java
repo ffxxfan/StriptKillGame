@@ -18,10 +18,10 @@ import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -54,9 +54,11 @@ public class AgentExecutor {
                 return;
             }
 
+            String roleIdHex = roleId.toHexString();
+
             // Broadcast typing indicator
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                    Map.of("type", "TYPING", "roleId", roleId.toHexString(),
+                    Map.of("type", "TYPING", "roleId", roleIdHex,
                             "roleName", targetRole.getName()));
 
             // Build sandboxed prompt
@@ -64,22 +66,65 @@ public class AgentExecutor {
             List<GameMessage> allMessages = deserializeMessages(liveGameRoomService.getMessages(new ObjectId(roomId)));
             List<GameMessage> recentMessages = memoryManager.getRecentMessages(allMessages);
 
-            String prompt = promptBuilder.buildAgentPrompt(
+            String promptText = promptBuilder.buildAgentPrompt(
                     room, script, targetRole,
                     room.getClueInstances(),
                     memoryFragments, recentMessages);
 
-            // Call LLM
-            String reply = chatModel.call(new Prompt(prompt))
-                    .getResult().getOutput().getText();
+            // Stream LLM response and push chunks via WebSocket
+            String streamId = UUID.randomUUID().toString();
+            AtomicInteger seq = new AtomicInteger(0);
+            StringBuilder fullReply = new StringBuilder();
+            String streamTopic = "/topic/room." + roomId + ".stream";
 
-            if (reply != null && !reply.isBlank()) {
-                gameChatService.sendAiMessage(roomId, roleId, reply, room);
-            }
+            Flux<String> contentFlux = chatModel.stream(new Prompt(promptText))
+                    .map(response -> {
+                        if (response.getResult() != null
+                                && response.getResult().getOutput() != null
+                                && response.getResult().getOutput().getText() != null) {
+                            return response.getResult().getOutput().getText();
+                        }
+                        return "";
+                    })
+                    .filter(chunk -> !chunk.isEmpty());
 
-            // Remove typing indicator
-            messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                    Map.of("type", "TYPING_END", "roleId", roleId.toHexString()));
+            contentFlux
+                    .doOnNext(chunk -> {
+                        fullReply.append(chunk);
+                        Map<String, Object> payload = new LinkedHashMap<>();
+                        payload.put("type", "STREAM_CHUNK");
+                        payload.put("streamId", streamId);
+                        payload.put("roleId", roleIdHex);
+                        payload.put("roleName", targetRole.getName());
+                        payload.put("chunk", chunk);
+                        payload.put("seq", seq.getAndIncrement());
+                        messagingTemplate.convertAndSend(streamTopic, payload);
+                    })
+                    .doOnComplete(() -> {
+                        String reply = fullReply.toString();
+                        if (!reply.isBlank()) {
+                            // Store complete message to Redis (no WS broadcast — chunks already sent)
+                            gameChatService.storeAiMessage(roomId, roleId, reply, room);
+                        }
+
+                        // Send stream-end signal
+                        Map<String, Object> endPayload = new LinkedHashMap<>();
+                        endPayload.put("type", "STREAM_END");
+                        endPayload.put("streamId", streamId);
+                        endPayload.put("roleId", roleIdHex);
+                        endPayload.put("seq", seq.getAndIncrement());
+                        messagingTemplate.convertAndSend(streamTopic, endPayload);
+
+                        // Remove typing indicator
+                        messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
+                                Map.of("type", "TYPING_END", "roleId", roleIdHex));
+                    })
+                    .doOnError(error -> {
+                        log.error("Agent streaming failed for role {} in room {}", roleId, roomId, error);
+                        messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
+                                Map.of("type", "TYPING_END", "roleId", roleIdHex));
+                    })
+                    .blockLast(); // Block within @Async thread to keep it alive until stream completes
 
         } catch (Exception e) {
             log.error("Agent execution failed for role {} in room {}", roleId, roomId, e);

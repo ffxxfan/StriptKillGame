@@ -12,7 +12,11 @@
           第 {{ (roomDetail.currentStage || 0) + 1 }} 幕
         </el-tag>
       </div>
-      <div style="width: 80px"></div>
+      <el-button class="script-btn" text @click="openScriptDrawer">
+        <el-icon :size="18"><Document /></el-icon>
+        我的剧本
+        <el-badge v-if="hasNewStage" is-dot class="stage-dot" />
+      </el-button>
     </header>
 
     <!-- Chat Area -->
@@ -71,16 +75,53 @@
         发送
       </el-button>
     </div>
+
+    <!-- Script Drawer -->
+    <el-drawer
+      v-model="scriptDrawerVisible"
+      title="我的剧本"
+      direction="rtl"
+      size="380px"
+      :with-header="true"
+      class="script-drawer"
+    >
+      <div v-if="stageContents.length === 0" class="script-empty">
+        暂无剧本内容，等待游戏开始...
+      </div>
+      <el-tabs v-else v-model="activeStageTab" class="script-tabs">
+        <el-tab-pane
+          v-for="stage in stageContents"
+          :key="stage.stageNumber"
+          :label="stage.stageTitle || `第${stage.stageNumber}幕`"
+          :name="String(stage.stageNumber)"
+        >
+          <div class="stage-content">
+            <div v-if="stage.content" class="stage-text" v-html="formatContent(stage.content)"></div>
+            <div v-else class="stage-no-content">该幕暂无你的专属内容</div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, Document } from '@element-plus/icons-vue'
 import { getRoom, leaveRoom } from '../api/room'
+import { getMyScriptContent } from '../api/script'
 import { useGameStore } from '../stores/game'
 import { useWebSocket } from '../composables/useWebSocket'
+
+interface StageContent {
+  stageNumber: number
+  stageTitle: string
+  content: string | null
+  audioUrl: string | null
+  totalStages: number
+  isLastStage: boolean
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -93,6 +134,12 @@ const inputText = ref('')
 const chatAreaRef = ref<HTMLElement | null>(null)
 const systemMessages = ref<string[]>([])
 
+// Script drawer state
+const scriptDrawerVisible = ref(false)
+const stageContents = ref<StageContent[]>([])
+const activeStageTab = ref('0')
+const hasNewStage = ref(false)
+
 onMounted(async () => {
   try {
     const { data } = await getRoom(roomId)
@@ -104,16 +151,43 @@ onMounted(async () => {
     return
   }
 
-  connect(roomId, (msg: any) => {
-    if (msg.type === 'SYSTEM') {
-      systemMessages.value.push(msg.content)
-      if (msg.content === '游戏结束！') {
-        gameStore.setGameStatus('FINISHED')
+  // Load script content if game is already playing
+  if (roomDetail.value?.status === 'PLAYING') {
+    await fetchScriptContent()
+  }
+
+  connect(roomId, {
+    onMessage: (msg: any) => {
+      if (msg.type === 'SYSTEM') {
+        systemMessages.value.push(msg.content)
+        if (msg.content === '游戏结束！') {
+          gameStore.setGameStatus('FINISHED')
+        }
+      } else {
+        gameStore.addMessage(msg)
       }
-    } else {
-      gameStore.addMessage(msg)
+      nextTick(() => scrollToBottom())
+    },
+    onStageUpdate: async (signal) => {
+      // Update room detail display
+      if (roomDetail.value) {
+        roomDetail.value.currentStage = signal.currentStage
+      }
+      // Refresh script content
+      await fetchScriptContent()
+      // Show new-stage indicator
+      hasNewStage.value = true
+      // Auto-switch to the new tab
+      activeStageTab.value = String(signal.currentStage)
+    },
+    onStreamChunk: (chunk: any) => {
+      if (chunk.type === 'STREAM_CHUNK') {
+        gameStore.appendStreamChunk(chunk.streamId, chunk.roleId, chunk.roleName, chunk.chunk, chunk.seq)
+      } else if (chunk.type === 'STREAM_END') {
+        gameStore.finalizeStream(chunk.streamId)
+      }
+      nextTick(() => scrollToBottom())
     }
-    nextTick(() => scrollToBottom())
   })
 })
 
@@ -124,6 +198,25 @@ onUnmounted(() => {
 watch(() => gameStore.messages.length, () => {
   nextTick(() => scrollToBottom())
 })
+
+async function fetchScriptContent() {
+  try {
+    const { data } = await getMyScriptContent()
+    stageContents.value = data
+  } catch (e) {
+    console.error('获取剧本内容失败', e)
+  }
+}
+
+function openScriptDrawer() {
+  scriptDrawerVisible.value = true
+  hasNewStage.value = false
+}
+
+function formatContent(content: string): string {
+  // Convert newlines to <br> for display
+  return content.replace(/\n/g, '<br>')
+}
 
 function scrollToBottom() {
   if (chatAreaRef.value) {
@@ -170,6 +263,17 @@ async function handleLeave() {
 
 .exit-btn {
   color: #e94560 !important;
+}
+
+.script-btn {
+  color: #e0c97f !important;
+  position: relative;
+}
+
+.stage-dot {
+  position: absolute;
+  top: 2px;
+  right: -2px;
 }
 
 .room-info {
@@ -258,5 +362,57 @@ async function handleLeave() {
 
 .input-area .el-input {
   flex: 1;
+}
+
+/* Script Drawer */
+.script-empty {
+  text-align: center;
+  color: #888;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+.script-tabs {
+  height: 100%;
+}
+
+.stage-content {
+  padding: 4px 0;
+}
+
+.stage-text {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #e0e0e0;
+}
+
+.stage-no-content {
+  text-align: center;
+  color: #666;
+  padding: 20px;
+  font-size: 13px;
+}
+</style>
+
+<style>
+/* Drawer theme override (unscoped to reach el-drawer internals) */
+.script-drawer .el-drawer {
+  background: #1a1a2e !important;
+  color: #e0e0e0;
+}
+.script-drawer .el-drawer__header {
+  color: #e0c97f;
+  border-bottom: 1px solid #0f3460;
+  margin-bottom: 0;
+  padding-bottom: 16px;
+}
+.script-drawer .el-tabs__item {
+  color: #a0a0b0;
+}
+.script-drawer .el-tabs__item.is-active {
+  color: #e0c97f;
+}
+.script-drawer .el-tabs__active-bar {
+  background-color: #e0c97f;
 }
 </style>

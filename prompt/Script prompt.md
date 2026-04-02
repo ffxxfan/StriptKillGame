@@ -522,4 +522,29 @@
      }
      ```
    
+   * Stage3 bug 修复
+   
+     ```
+     # Role
+     你是一位精通 Spring Boot 3、Spring AI 和 WebSocket 的高级调试工程师。你擅长处理复杂的分布式状态机逻辑和多智能体（Multi-Agent）交互优化。
+     
+     # Context
+     这是一个基于 "Harness 模式" 的 AI 剧本杀系统。
+     
+     核心组件：AI DM (主持人)、AI Agents (角色)、真人玩家。
+     
+     技术栈：Spring AI (ChatClient), WebSocket (STOMP), Redis (暂存消息), MongoDB (存储剧本/房间)。
+     
+     # Task: 修复以下 4 个核心 Bug
+     
+     Bug 1: 玩家剧本可见性异常
+     现象：开始游戏后，玩家界面无法显示剧本内容。不要在一次性查询中返回所有 Stage。查阅 DM Agent 的工具箱，如果没有剧本推送机制则添加新解锁的剧本内容推送机制，当 DM Agent 决定开启下一幕时为游戏中的 Agent 和 玩家推送剧本内容。DM Agent 工具箱在`com/example/striptkillgamedemo2/ai/tool`
+     Bug 2: 游戏开场白缺失
+     现象：点击“开始游戏”后，系统无反应，DM 未进行引导。
+     Bug 3: 非 DM Agent 沉默（对话流调度失效）
+     现象：自由发言阶段只有 DM 发言，其他 AI 角色不说话。
+     Bug 4: AI 响应延迟过高（体验优化）
+     现象：AI 生成长文本时，玩家需等待完整段落生成后才能看到，响应时间超 5-10 秒。WebSocket 分片推送：在流式响应的 Flux 订阅中，将每一个 content 片段（Chunk）通过 WebSocket 即时推送给前端。Spring AI 的 Flux 和 WebSocket 的 simpMessagingTemplate 配合时，要防止消息乱序。
+     ```
+   
      

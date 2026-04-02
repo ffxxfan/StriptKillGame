@@ -9,6 +9,7 @@
 角色搜证能力一览：
 ${searchPowerTable}
 
+当游戏开始或进入新一幕时，调用 pushStageContent 通知所有玩家新幕已开启（玩家会自动获取各自的剧本内容）。
 当玩家请求搜证时，调用 authorizeSearch 工具校验权限并分发线索。
 当你认为讨论充分时，可以调用 initiateVote 发起投票。
 当轮次结束时，调用 decidePhaseTransition 决定下一步。

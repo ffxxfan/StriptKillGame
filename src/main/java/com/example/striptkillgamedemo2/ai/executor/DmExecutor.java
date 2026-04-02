@@ -18,17 +18,15 @@ import org.bson.types.ObjectId;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.model.tool.ToolCallingChatOptions;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -44,6 +42,11 @@ public class DmExecutor {
     private final GameChatService gameChatService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+
+    private static final String THINK_OPEN = "<think>";
+    private static final String THINK_CLOSE = "</think>";
+    private static final int STREAM_CHUNK_SIZE = 2;
+    private static final long STREAM_CHUNK_DELAY_MS = 30;
 
     @Async("aiExecutor")
     public void executeDmAction(String roomId, ObjectId triggerRoleId, String reason) {
@@ -61,9 +64,11 @@ public class DmExecutor {
                     .findFirst()
                     .orElse(null);
 
+            String dmRoleIdHex = dmRoleId != null ? dmRoleId.toHexString() : "dm";
+
             // Broadcast DM typing
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                    Map.of("type", "TYPING", "roleId", dmRoleId != null ? dmRoleId.toHexString() : "dm",
+                    Map.of("type", "TYPING", "roleId", dmRoleIdHex,
                             "roleName", "主持人"));
 
             // Build tool context
@@ -87,7 +92,7 @@ public class DmExecutor {
             // Add the reason/trigger as user message
             String userContent = reason != null ? reason : "请评估当前局势并采取适当行动。";
 
-            // Call LLM with tools
+            // Call LLM with tools (synchronous — tools have side effects)
             Prompt prompt = new Prompt(
                     List.of(
                             new SystemMessage(systemPrompt),
@@ -98,19 +103,50 @@ public class DmExecutor {
                             .build()
             );
 
-            ChatResponse response = chatModel.call(prompt);
-            String reply = response.getResult().getOutput().getText();
-
-            // If DM has a narrative reply, send it as DM message
-            if (reply != null && !reply.isBlank()) {
-                if (dmRoleId != null) {
-                    gameChatService.sendAiMessage(roomId, dmRoleId, reply, room);
-                }
+            // Blocking call: Spring AI handles the full tool-calling loop internally,
+            // so only the final response text is returned — no intermediate reasoning leaks.
+            ChatResponse chatResponse = chatModel.call(prompt);
+            String reply = "";
+            if (chatResponse.getResults() != null
+                    && chatResponse.getResults().get(1).getOutput() != null
+                    && chatResponse.getResults().get(1).getOutput().getText() != null) {
+                reply = (chatResponse.getResults().get(1).getOutput().getText());
             }
+
+            // Push the final reply to frontend in small chunks to preserve streaming UX
+            String streamId = UUID.randomUUID().toString();
+            String streamTopic = "/topic/room." + roomId + ".stream";
+            int seq = 0;
+
+            for (int i = 0; i < reply.length(); i += STREAM_CHUNK_SIZE) {
+                String chunk = reply.substring(i, Math.min(i + STREAM_CHUNK_SIZE, reply.length()));
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("type", "STREAM_CHUNK");
+                payload.put("streamId", streamId);
+                payload.put("roleId", dmRoleIdHex);
+                payload.put("roleName", "主持人");
+                payload.put("chunk", chunk);
+                payload.put("seq", seq++);
+                messagingTemplate.convertAndSend(streamTopic, payload);
+                Thread.sleep(STREAM_CHUNK_DELAY_MS);
+            }
+
+            // Store message
+            if (!reply.isBlank() && dmRoleId != null) {
+                gameChatService.storeAiMessage(roomId, dmRoleId, reply, room);
+            }
+
+            // Send stream-end signal
+            Map<String, Object> endPayload = new LinkedHashMap<>();
+            endPayload.put("type", "STREAM_END");
+            endPayload.put("streamId", streamId);
+            endPayload.put("roleId", dmRoleIdHex);
+            endPayload.put("seq", seq);
+            messagingTemplate.convertAndSend(streamTopic, endPayload);
 
             // Remove typing
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                    Map.of("type", "TYPING_END", "roleId", dmRoleId != null ? dmRoleId.toHexString() : "dm"));
+                    Map.of("type", "TYPING_END", "roleId", dmRoleIdHex));
 
         } catch (Exception e) {
             log.error("DM execution failed for room {}", roomId, e);
@@ -122,6 +158,12 @@ public class DmExecutor {
         List<StagePhase> phases = script.getStages().get(room.getCurrentStage()).getPhases();
         if (phases == null || room.getCurrentPhaseIndex() >= phases.size()) return null;
         return phases.get(room.getCurrentPhaseIndex()).getPhaseId();
+    }
+
+    /** Strip &lt;think&gt;...&lt;/think&gt; blocks for models that wrap reasoning in tags (e.g. DeepSeek). */
+    private String stripThinkTags(String text) {
+        if (text == null) return "";
+        return text.replaceAll("(?s)" + THINK_OPEN + ".*?" + THINK_CLOSE, "").trim();
     }
 
     private List<GameMessage> deserializeMessages(List<String> jsonMessages) {

@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.service;
 
+import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.ai.memory.MemoryManager;
 import com.example.striptkillgamedemo2.ai.review.FinalReviewService;
 import com.example.striptkillgamedemo2.dto.StageContentDTO;
@@ -36,6 +37,7 @@ public class GameFlowService {
     private final GameRecordRepository gameRecordRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final FinalReviewService finalReviewService;
+    private final DmExecutor dmExecutor;
     private final MemoryManager memoryManager;
     private final ObjectMapper objectMapper;
 
@@ -82,6 +84,11 @@ public class GameFlowService {
 
         messagingTemplate.convertAndSend("/topic/room." + roomId,
                 Map.of("type", "SYSTEM", "content", "游戏开始！当前阶段: " + stageTitle));
+
+        // Trigger DM to signal stage update and deliver opening narration
+        dmExecutor.executeDmAction(roomId, null,
+                "游戏刚刚开始，你是主持人。请先调用 pushStageContent 工具通知玩家第一幕已开启，" +
+                "然后发表一段精彩的开场白，介绍故事背景、案件概况，并引导玩家进入第一幕讨论。");
 
         log.info("Game started in room {}", roomId);
         return room;
@@ -144,6 +151,11 @@ public class GameFlowService {
         ScriptStage stage = script.getStages().get(nextStage);
         messagingTemplate.convertAndSend("/topic/room." + roomId,
                 Map.of("type", "SYSTEM", "content", "进入新阶段: " + stage.getStageTitle()));
+
+        // Trigger DM to signal stage update and narrate transition
+        dmExecutor.executeDmAction(roomId, null,
+                "游戏进入了第" + (nextStage + 1) + "幕「" + stage.getStageTitle() + "」。" +
+                "请先调用 pushStageContent 工具通知玩家新幕已开启，然后发表过渡旁白引导玩家。");
 
         log.info("Room {} advanced to stage {}", roomId, nextStage);
         return room;

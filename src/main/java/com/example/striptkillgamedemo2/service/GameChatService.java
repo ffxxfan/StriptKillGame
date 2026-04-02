@@ -79,6 +79,32 @@ public class GameChatService {
         return dto;
     }
 
+    /**
+     * Store an AI message to Redis WITHOUT broadcasting via WebSocket.
+     * Used when chunks have already been streamed to the client.
+     */
+    public ChatMessageDTO storeAiMessage(String roomId, ObjectId senderRoleId, String content, LiveGameRoom room) {
+        Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
+        Role curRole = script.getRoles().stream()
+                .filter(r -> Objects.equals(r.getId(), senderRoleId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("角色不存在"));
+
+        GameMessage message = GameMessage.builder()
+                .messageId(new ObjectId())
+                .gameRoomId(new ObjectId(roomId))
+                .senderRoleId(senderRoleId)
+                .isAi(true)
+                .senderRoleName(curRole.getName())
+                .senderAvatar(curRole.getAvatar())
+                .content(content)
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        storeMessage(roomId, message);
+        return toChatDTO(message);
+    }
+
     private void storeMessage(String roomId, GameMessage message) {
         try {
             String json = objectMapper.writeValueAsString(message);
