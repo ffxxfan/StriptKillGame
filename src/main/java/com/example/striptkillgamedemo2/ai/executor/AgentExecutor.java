@@ -14,14 +14,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import reactor.core.publisher.Flux;
 
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -37,8 +36,26 @@ public class AgentExecutor {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
 
+    private static final String THINK_OPEN = "<think>";
+    private static final String THINK_CLOSE = "</think>";
+    private static final int STREAM_CHUNK_SIZE = 2;
+    private static final long STREAM_CHUNK_DELAY_MS = 30;
+
+    /** Trigger a single agent reply asynchronously. */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId) {
+        doExecuteAgentReply(roomId, roleId);
+    }
+
+    /** Trigger multiple agents sequentially (one finishes before the next starts). */
+    @Async("aiExecutor")
+    public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds) {
+        for (ObjectId roleId : roleIds) {
+            doExecuteAgentReply(roomId, roleId);
+        }
+    }
+
+    private void doExecuteAgentReply(String roomId, ObjectId roleId) {
         try {
             LiveGameRoom room = liveGameRoomService.get(roomId);
             if (room == null) return;
@@ -71,66 +88,60 @@ public class AgentExecutor {
                     room.getClueInstances(),
                     memoryFragments, recentMessages);
 
-            // Stream LLM response and push chunks via WebSocket
+            // Blocking call — avoids concurrent streaming issues and filters out thinking
+            ChatResponse chatResponse = chatModel.call(new Prompt(promptText));
+            String reply = "";
+            if (chatResponse.getResults() != null
+                    && chatResponse.getResults().get(1).getOutput() != null
+                    && chatResponse.getResults().get(1).getOutput().getText() != null) {
+                reply = stripThinkTags(chatResponse.getResults().get(1).getOutput().getText());
+            }
+
+            // Push final reply to frontend in small chunks for typing effect
             String streamId = UUID.randomUUID().toString();
-            AtomicInteger seq = new AtomicInteger(0);
-            StringBuilder fullReply = new StringBuilder();
             String streamTopic = "/topic/room." + roomId + ".stream";
+            int seq = 0;
 
-            Flux<String> contentFlux = chatModel.stream(new Prompt(promptText))
-                    .map(response -> {
-                        if (response.getResult() != null
-                                && response.getResult().getOutput() != null
-                                && response.getResult().getOutput().getText() != null) {
-                            return response.getResult().getOutput().getText();
-                        }
-                        return "";
-                    })
-                    .filter(chunk -> !chunk.isEmpty());
+            for (int i = 0; i < reply.length(); i += STREAM_CHUNK_SIZE) {
+                String chunk = reply.substring(i, Math.min(i + STREAM_CHUNK_SIZE, reply.length()));
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("type", "STREAM_CHUNK");
+                payload.put("streamId", streamId);
+                payload.put("roleId", roleIdHex);
+                payload.put("roleName", targetRole.getName());
+                payload.put("chunk", chunk);
+                payload.put("seq", seq++);
+                messagingTemplate.convertAndSend(streamTopic, payload);
+                Thread.sleep(STREAM_CHUNK_DELAY_MS);
+            }
 
-            contentFlux
-                    .doOnNext(chunk -> {
-                        fullReply.append(chunk);
-                        Map<String, Object> payload = new LinkedHashMap<>();
-                        payload.put("type", "STREAM_CHUNK");
-                        payload.put("streamId", streamId);
-                        payload.put("roleId", roleIdHex);
-                        payload.put("roleName", targetRole.getName());
-                        payload.put("chunk", chunk);
-                        payload.put("seq", seq.getAndIncrement());
-                        messagingTemplate.convertAndSend(streamTopic, payload);
-                    })
-                    .doOnComplete(() -> {
-                        String reply = fullReply.toString();
-                        if (!reply.isBlank()) {
-                            // Store complete message to Redis (no WS broadcast — chunks already sent)
-                            gameChatService.storeAiMessage(roomId, roleId, reply, room);
-                        }
+            // Store message
+            if (!reply.isBlank()) {
+                gameChatService.storeAiMessage(roomId, roleId, reply, room);
+            }
 
-                        // Send stream-end signal
-                        Map<String, Object> endPayload = new LinkedHashMap<>();
-                        endPayload.put("type", "STREAM_END");
-                        endPayload.put("streamId", streamId);
-                        endPayload.put("roleId", roleIdHex);
-                        endPayload.put("seq", seq.getAndIncrement());
-                        messagingTemplate.convertAndSend(streamTopic, endPayload);
+            // Send stream-end signal
+            Map<String, Object> endPayload = new LinkedHashMap<>();
+            endPayload.put("type", "STREAM_END");
+            endPayload.put("streamId", streamId);
+            endPayload.put("roleId", roleIdHex);
+            endPayload.put("seq", seq);
+            messagingTemplate.convertAndSend(streamTopic, endPayload);
 
-                        // Remove typing indicator
-                        messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                                Map.of("type", "TYPING_END", "roleId", roleIdHex));
-                    })
-                    .doOnError(error -> {
-                        log.error("Agent streaming failed for role {} in room {}", roleId, roomId, error);
-                        messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                                Map.of("type", "TYPING_END", "roleId", roleIdHex));
-                    })
-                    .blockLast(); // Block within @Async thread to keep it alive until stream completes
+            // Remove typing indicator
+            messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
+                    Map.of("type", "TYPING_END", "roleId", roleIdHex));
 
         } catch (Exception e) {
             log.error("Agent execution failed for role {} in room {}", roleId, roomId, e);
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                     Map.of("type", "TYPING_END", "roleId", roleId.toHexString()));
         }
+    }
+
+    private String stripThinkTags(String text) {
+        if (text == null) return "";
+        return text.replaceAll("(?s)" + THINK_OPEN + ".*?" + THINK_CLOSE, "").trim();
     }
 
     private List<GameMessage> deserializeMessages(List<String> jsonMessages) {

@@ -4,6 +4,7 @@ import com.example.striptkillgamedemo2.ai.event.ChatMessageEvent;
 import com.example.striptkillgamedemo2.ai.executor.AgentExecutor;
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+import com.example.striptkillgamedemo2.entity.mongo.Member;
 import com.example.striptkillgamedemo2.entity.mongo.Role;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
 import com.example.striptkillgamedemo2.entity.mongo.ScriptStage;
@@ -126,9 +127,14 @@ public class AgentOrchestrator {
             }
         }
 
-        // No explicit mention — ask DM to select respondents
-        dmExecutor.executeDmAction(roomId, senderRoleId,
-                "公屏消息：「" + content + "」请使用 selectRespondents 工具选择1-2个最相关的角色进行回复。");
+        // No explicit mention — trigger all AI agents sequentially (one at a time)
+        List<ObjectId> aiRoleIds = room.getMembers().stream()
+                .filter(m -> m.isAi() && !m.isDm() && m.getRoleId() != null)
+                .map(Member::getRoleId)
+                .toList();
+        if (!aiRoleIds.isEmpty()) {
+            agentExecutor.executeAgentRepliesSequentially(roomId, aiRoleIds);
+        }
     }
 
     boolean isDmRequest(String content) {
