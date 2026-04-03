@@ -29,6 +29,10 @@ public class PhaseTimerService {
     private final ConcurrentHashMap<String, ScheduledFuture<?>> reminders = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
+    private String timerKey(String roomId, PhaseType phaseType) {
+        return roomId + ":" + phaseType.name();
+    }
+
     /**
      * Unified phase timer. Starts a countdown for the given phase type.
      * Duration is taken from StagePhase.timeLimitSeconds; if 0, falls back to config defaults.
@@ -39,7 +43,8 @@ public class PhaseTimerService {
      *   3. Schedules a timeout at duration to tell DM to transition
      */
     public void startPhaseTimer(String roomId, PhaseType phaseType, int durationSeconds) {
-        cancelTimer(roomId);
+        String key = timerKey(roomId, phaseType);
+        cancelTimerByKey(key);
 
         int duration = durationSeconds > 0 ? durationSeconds : getDefaultDuration(phaseType);
         if (duration <= 0) return;
@@ -54,7 +59,7 @@ public class PhaseTimerService {
         if (duration > REMINDER_BEFORE_SECONDS) {
             int reminderDelay = duration - REMINDER_BEFORE_SECONDS;
             ScheduledFuture<?> reminderFuture = scheduler.schedule(() -> {
-                reminders.remove(roomId);
+                reminders.remove(key);
                 String reminderMsg = phaseLabel(phaseType) + "还剩 " + REMINDER_BEFORE_SECONDS + " 秒，请准备收尾。";
 
                 // Notify players
@@ -70,12 +75,12 @@ public class PhaseTimerService {
                 log.info("[PhaseTimer] reminder sent, room={}, phase={}, remaining={}s",
                         roomId, phaseType, REMINDER_BEFORE_SECONDS);
             }, reminderDelay, TimeUnit.SECONDS);
-            reminders.put(roomId, reminderFuture);
+            reminders.put(key, reminderFuture);
         }
 
         // Schedule timeout
         ScheduledFuture<?> timeoutFuture = scheduler.schedule(() -> {
-            timers.remove(roomId);
+            timers.remove(key);
             String timeoutMsg = phaseLabel(phaseType) + "时间已到。";
 
             // Notify players
@@ -90,27 +95,37 @@ public class PhaseTimerService {
 
             log.info("[PhaseTimer] expired, room={}, phase={}", roomId, phaseType);
         }, duration, TimeUnit.SECONDS);
-        timers.put(roomId, timeoutFuture);
+        timers.put(key, timeoutFuture);
 
         log.info("[PhaseTimer] started, room={}, phase={}, duration={}s", roomId, phaseType, duration);
     }
 
-    public void startVoteTimer(String roomId) {
-        cancelTimer(roomId);
-        ScheduledFuture<?> future = scheduler.schedule(() -> {
-            timers.remove(roomId);
-            messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
-                    Map.of("type", "VOTE_CLOSED", "reason", "投票超时自动关闭"));
-        }, properties.getVoteTimeoutSeconds(), TimeUnit.SECONDS);
-        timers.put(roomId, future);
+    public void cancelTimer(String roomId, PhaseType phaseType) {
+        String key = timerKey(roomId, phaseType);
+        cancelTimerByKey(key);
     }
 
-    public void cancelTimer(String roomId) {
-        ScheduledFuture<?> existing = timers.remove(roomId);
+    public void cancelAllTimers(String roomId) {
+        String prefix = roomId + ":";
+        timers.keySet().stream()
+                .filter(k -> k.startsWith(prefix))
+                .toList()
+                .forEach(this::cancelTimerByKey);
+        reminders.keySet().stream()
+                .filter(k -> k.startsWith(prefix))
+                .toList()
+                .forEach(k -> {
+                    ScheduledFuture<?> f = reminders.remove(k);
+                    if (f != null && !f.isDone()) f.cancel(false);
+                });
+    }
+
+    private void cancelTimerByKey(String key) {
+        ScheduledFuture<?> existing = timers.remove(key);
         if (existing != null && !existing.isDone()) {
             existing.cancel(false);
         }
-        ScheduledFuture<?> reminder = reminders.remove(roomId);
+        ScheduledFuture<?> reminder = reminders.remove(key);
         if (reminder != null && !reminder.isDone()) {
             reminder.cancel(false);
         }
