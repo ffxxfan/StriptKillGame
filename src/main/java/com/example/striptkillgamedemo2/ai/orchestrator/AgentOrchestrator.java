@@ -18,6 +18,7 @@ import org.bson.types.ObjectId;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
@@ -120,18 +121,16 @@ public class AgentOrchestrator {
 
     private void handleFreeChat(String roomId, LiveGameRoom room, Script script,
                                  String content, ObjectId senderRoleId) {
-        // Check for @mentions
+        // Layer 1: @mention — check for explicit @RoleName mentions
         Matcher matcher = MENTION_PATTERN.matcher(content);
         while (matcher.find()) {
             String mentionedName = matcher.group(1);
 
-            // Check if it's @DM
             if ("DM".equalsIgnoreCase(mentionedName) || "主持人".equals(mentionedName)) {
                 dmExecutor.executeDmAction(roomId, senderRoleId, "玩家消息：" + content);
                 return;
             }
 
-            // Check if it's an agent role name
             for (Role role : script.getRoles()) {
                 if (role.getName().equals(mentionedName)) {
                     boolean isAi = room.getMembers().stream()
@@ -144,14 +143,37 @@ public class AgentOrchestrator {
             }
         }
 
-        // No explicit mention — trigger all AI agents sequentially (one at a time)
-        List<ObjectId> aiRoleIds = room.getMembers().stream()
-                .filter(m -> m.isAi() && !m.isDm() && m.getRoleId() != null)
-                .map(Member::getRoleId)
-                .toList();
-        if (!aiRoleIds.isEmpty()) {
-            agentExecutor.executeAgentRepliesSequentially(roomId, aiRoleIds);
+        // Layer 2: role name in text — find AI roles whose name appears in the message
+        List<ObjectId> namedIds = findNamedAiRoles(content, script, room);
+        if (!namedIds.isEmpty()) {
+            namedIds.stream().limit(2).forEach(id -> agentExecutor.executeAgentReply(roomId, id));
+            return;
         }
+
+        // Layer 3: DM decides — ask DM to pick 1-2 relevant respondents
+        List<String> candidateNames = script.getRoles().stream()
+                .filter(role -> room.getMembers().stream()
+                        .anyMatch(m -> m.isAi() && !m.isDm() && Objects.equals(m.getRoleId(), role.getId())))
+                .map(Role::getName)
+                .toList();
+        if (!candidateNames.isEmpty()) {
+            dmExecutor.executeDmAction(roomId, senderRoleId,
+                    "玩家说：「" + content + "」。请使用 selectRespondents 工具从以下角色中选择 1-2 个最相关的回复：" + candidateNames);
+        }
+    }
+
+    List<ObjectId> findNamedAiRoles(String content, Script script, LiveGameRoom room) {
+        List<ObjectId> matched = new ArrayList<>();
+        for (Role role : script.getRoles()) {
+            if (role.getName() != null && content.contains(role.getName())) {
+                boolean isAi = room.getMembers().stream()
+                        .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
+                if (isAi) {
+                    matched.add(role.getId());
+                }
+            }
+        }
+        return matched;
     }
 
     boolean isDmRequest(String content) {
