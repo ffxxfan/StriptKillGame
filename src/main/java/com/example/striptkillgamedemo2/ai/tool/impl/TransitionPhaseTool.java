@@ -104,7 +104,7 @@ public class TransitionPhaseTool implements DmTool {
         int nextPhaseIndex = room.getCurrentPhaseIndex() + 1;
 
         // Cancel any active timer for the ending phase
-        phaseTimerService.cancelTimer(room.getRoomId());
+        phaseTimerService.cancelTimer(room.getRoomId(), ctx.getCurrentPhaseType());
 
         if (totalPhases > 0 && nextPhaseIndex >= totalPhases) {
             // All phases in this stage are done — signal stage complete
@@ -180,7 +180,7 @@ public class TransitionPhaseTool implements DmTool {
         }
 
         // Cancel any active timer
-        phaseTimerService.cancelTimer(room.getRoomId());
+        phaseTimerService.cancelAllTimers(room.getRoomId());
 
         if (stages == null || nextStage >= stages.size()) {
             // No more stages — game should end
