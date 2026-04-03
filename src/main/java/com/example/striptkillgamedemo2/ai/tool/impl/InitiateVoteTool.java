@@ -1,19 +1,21 @@
 package com.example.striptkillgamedemo2.ai.tool.impl;
 
+import com.example.striptkillgamedemo2.ai.executor.AgentExecutor;
 import com.example.striptkillgamedemo2.ai.tool.DmTool;
 import com.example.striptkillgamedemo2.ai.tool.DmToolContext;
 import com.example.striptkillgamedemo2.config.AiEngineProperties;
+import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+import com.example.striptkillgamedemo2.entity.mongo.Member;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.entity.redis.VoteSession;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
+import com.example.striptkillgamedemo2.service.PhaseTimerService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
-
-import com.example.striptkillgamedemo2.entity.enums.PhaseType;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -28,6 +30,8 @@ public class InitiateVoteTool implements DmTool {
     private final LiveGameRoomService liveGameRoomService;
     private final SimpMessagingTemplate messagingTemplate;
     private final AiEngineProperties aiEngineProperties;
+    private final AgentExecutor agentExecutor;
+    private final PhaseTimerService phaseTimerService;
 
     @Data
     public static class Input {
@@ -80,6 +84,20 @@ public class InitiateVoteTool implements DmTool {
                 "/topic/room." + room.getRoomId(),
                 Map.of("type", "VOTE_OPEN", "vote", vote)
         );
+
+        // Start vote timer
+        phaseTimerService.startPhaseTimer(room.getRoomId(), PhaseType.VOTE,
+                aiEngineProperties.getVoteTimeoutSeconds());
+
+        // Trigger AI agents to vote asynchronously
+        List<ObjectId> aiRoleIds = room.getMembers().stream()
+                .filter(m -> m.isAi() && !m.isDm() && m.getRoleId() != null)
+                .map(Member::getRoleId)
+                .toList();
+        for (ObjectId aiRoleId : aiRoleIds) {
+            agentExecutor.executeAgentVote(room.getRoomId(), aiRoleId,
+                    input.getTitle(), input.getOptions());
+        }
 
         log.info("[initiateVote] roomId={}, title={}, options={}", room.getRoomId(), input.getTitle(), input.getOptions());
         return Map.of("success", true, "voteId", vote.getVoteId(), "deadline", vote.getDeadline().toString());
