@@ -4,6 +4,7 @@ import com.example.striptkillgamedemo2.ai.memory.MemoryManager;
 import com.example.striptkillgamedemo2.ai.prompt.PromptBuilder;
 import com.example.striptkillgamedemo2.ai.tool.DmToolContext;
 import com.example.striptkillgamedemo2.ai.tool.DmToolRegistry;
+import com.example.striptkillgamedemo2.entity.enums.PhaseType;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
 import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.GameMessage;
@@ -77,6 +78,7 @@ public class DmExecutor {
                     .room(room)
                     .script(script)
                     .currentPhaseId(currentPhaseId)
+                    .currentPhaseType(getCurrentPhaseType(script, room))
                     .triggerRoleId(triggerRoleId)
                     .build();
 
@@ -154,10 +156,20 @@ public class DmExecutor {
     }
 
     private String getCurrentPhaseId(Script script, LiveGameRoom room) {
+        StagePhase phase = getCurrentStagePhase(script, room);
+        return phase != null ? phase.getPhaseId() : null;
+    }
+
+    private PhaseType getCurrentPhaseType(Script script, LiveGameRoom room) {
+        StagePhase phase = getCurrentStagePhase(script, room);
+        return phase != null ? phase.getType() : null;
+    }
+
+    private StagePhase getCurrentStagePhase(Script script, LiveGameRoom room) {
         if (script.getStages() == null || room.getCurrentStage() >= script.getStages().size()) return null;
         List<StagePhase> phases = script.getStages().get(room.getCurrentStage()).getPhases();
         if (phases == null || room.getCurrentPhaseIndex() >= phases.size()) return null;
-        return phases.get(room.getCurrentPhaseIndex()).getPhaseId();
+        return phases.get(room.getCurrentPhaseIndex());
     }
 
     /** Strip &lt;think&gt;...&lt;/think&gt; blocks for models that wrap reasoning in tags (e.g. DeepSeek). */

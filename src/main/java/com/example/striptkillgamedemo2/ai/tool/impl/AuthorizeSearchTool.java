@@ -14,10 +14,13 @@ import org.bson.types.ObjectId;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
+import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -32,6 +35,11 @@ public class AuthorizeSearchTool implements DmTool {
         private String roomId;
         private String roleId;
         private String location;
+    }
+
+    @Override
+    public Set<PhaseType> allowedPhases() {
+        return Set.of(PhaseType.FREE_CHAT);
     }
 
     @Override

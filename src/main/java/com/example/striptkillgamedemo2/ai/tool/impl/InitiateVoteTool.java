@@ -13,9 +13,12 @@ import org.bson.types.ObjectId;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
+import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -31,6 +34,11 @@ public class InitiateVoteTool implements DmTool {
         private String roomId;
         private String title;
         private List<String> options;
+    }
+
+    @Override
+    public Set<PhaseType> allowedPhases() {
+        return Set.of(PhaseType.FREE_CHAT);
     }
 
     @Override
