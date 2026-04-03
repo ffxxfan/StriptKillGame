@@ -39,7 +39,7 @@ public class AuthorizeSearchTool implements DmTool {
 
     @Override
     public Set<PhaseType> allowedPhases() {
-        return Set.of(PhaseType.FREE_CHAT);
+        return Set.of(PhaseType.INVESTIGATION);
     }
 
     @Override
