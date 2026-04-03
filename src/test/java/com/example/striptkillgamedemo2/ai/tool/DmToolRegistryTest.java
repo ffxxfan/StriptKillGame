@@ -3,10 +3,12 @@ package com.example.striptkillgamedemo2.ai.tool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 class DmToolRegistryTest {
 
@@ -39,7 +41,7 @@ class DmToolRegistryTest {
                 new FakeTool("toolB", "Tool B description"),
                 new FakeTool("toolC", "Tool C description")
         );
-        registry = new DmToolRegistry(tools);
+        registry = new DmToolRegistry(tools, mock(SimpMessagingTemplate.class));
         ctx = DmToolContext.builder().build();
     }
 
@@ -71,7 +73,7 @@ class DmToolRegistryTest {
 
     @Test
     void buildCallbacks_withEmptyToolList_shouldReturnEmpty() {
-        DmToolRegistry emptyRegistry = new DmToolRegistry(List.of());
+        DmToolRegistry emptyRegistry = new DmToolRegistry(List.of(), mock(SimpMessagingTemplate.class));
         List<ToolCallback> callbacks = emptyRegistry.buildCallbacks(ctx);
         assertTrue(callbacks.isEmpty());
     }
