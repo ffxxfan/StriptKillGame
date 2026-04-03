@@ -32,12 +32,26 @@ public class MemoryManager {
 
     @Async("aiExecutor")
     public void compressStage(String roomId, int stageNumber, List<GameMessage> stageMessages) {
-        if (stageMessages.isEmpty()) {
-            log.debug("No messages to compress for room {} stage {}", roomId, stageNumber);
+        compressStageWithDmSummary(roomId, stageNumber, stageMessages, null);
+    }
+
+    /**
+     * Compress stage messages into a summary, optionally enriched with the DM's own analysis.
+     * The DM summary (lies detected, key evidence, suspects) is appended to the LLM prompt
+     * so the compression output captures DM-level intelligence that pure chat logs might miss.
+     */
+    @Async("aiExecutor")
+    public void compressStageWithDmSummary(String roomId, int stageNumber,
+                                            List<GameMessage> stageMessages, String dmSummary) {
+        if (stageMessages.isEmpty() && (dmSummary == null || dmSummary.isBlank())) {
+            log.debug("No messages or summary to compress for room {} stage {}", roomId, stageNumber);
             return;
         }
         try {
             String compressionPrompt = promptBuilder.buildCompressionPrompt(stageNumber, stageMessages);
+            if (dmSummary != null && !dmSummary.isBlank()) {
+                compressionPrompt += "\n\n## DM 内部分析\n" + dmSummary;
+            }
             String response = chatModel.call(new Prompt(compressionPrompt))
                     .getResult().getOutput().getText();
             String json = extractJson(response);
@@ -45,7 +59,8 @@ public class MemoryManager {
             objectMapper.readValue(json, StageSummary.class);
             String key = MEMORY_KEY_PREFIX + roomId + MEMORY_KEY_INFIX + stageNumber;
             redisTemplate.opsForValue().set(key, json, 12, TimeUnit.HOURS);
-            log.info("Stage {} compressed for room {}", stageNumber, roomId);
+            log.info("Stage {} compressed for room {} (dmSummary={})", stageNumber, roomId,
+                    dmSummary != null ? "yes" : "no");
         } catch (Exception e) {
             log.error("Failed to compress stage {} for room {}", stageNumber, roomId, e);
         }
@@ -67,6 +82,11 @@ public class MemoryManager {
             }
         }
         return fragments;
+    }
+
+    public boolean hasSummary(String roomId, int stageNumber) {
+        String key = MEMORY_KEY_PREFIX + roomId + MEMORY_KEY_INFIX + stageNumber;
+        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
     }
 
     public List<GameMessage> getRecentMessages(List<GameMessage> allMessages) {
