@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.service;
 
+import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.entity.redis.VoteRecord;
 import com.example.striptkillgamedemo2.entity.redis.VoteSession;
@@ -26,6 +27,7 @@ public class VoteService {
     private final StringRedisTemplate redisTemplate;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
+    private final DmExecutor dmExecutor;
 
     private static final String VOTES_KEY_PREFIX = "game:";
     private static final String VOTES_KEY_SUFFIX = ":votes";
@@ -65,13 +67,19 @@ public class VoteService {
                 .filter(m -> m.getRoleId() != null && !m.isDm())
                 .count();
 
+        long votedCount = vote.getResults().size();
+
         messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                 Map.of("type", "VOTE_UPDATE",
                         "voteId", vote.getVoteId(),
-                        "votedCount", vote.getResults().size(),
+                        "votedCount", votedCount,
                         "total", totalMembers));
 
-        return vote.getResults().size() >= totalMembers;
+        boolean allVoted = votedCount >= totalMembers;
+        if (allVoted) {
+            closeVoteAndNotifyDm(roomId);
+        }
+        return allVoted;
     }
 
     public Map<String, String> closeVote(String roomId) {
@@ -91,5 +99,20 @@ public class VoteService {
 
         log.info("Vote {} closed in room {}: {}", voteId, roomId, results);
         return results;
+    }
+
+    public void closeVoteAndNotifyDm(String roomId) {
+        Map<String, String> results = closeVote(roomId);
+        if (results.isEmpty()) return;
+
+        String resultSummary = results.entrySet().stream()
+                .map(e -> e.getKey() + " → " + e.getValue())
+                .collect(Collectors.joining(", "));
+
+        dmExecutor.executeDmAction(roomId, null,
+                "投票已结束，结果如下：" + resultSummary +
+                "。请宣布投票结果，然后使用 transitionPhase 工具推进流程。");
+
+        log.info("[VoteService] vote closed and DM notified, room={}, results={}", roomId, results);
     }
 }
