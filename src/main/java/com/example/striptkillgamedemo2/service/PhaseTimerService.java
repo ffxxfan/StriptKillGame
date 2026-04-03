@@ -118,19 +118,25 @@ public class PhaseTimerService {
 
     private int getDefaultDuration(PhaseType phaseType) {
         return switch (phaseType) {
-            case FREE_CHAT -> properties.getFreeChatTimeoutSeconds();
+            case SCRIPT_READING -> properties.getScriptReadingTimeoutSeconds();
             case TURN_BASED -> properties.getTurnTimeoutSeconds();
+            case FREE_CHAT -> properties.getFreeChatTimeoutSeconds();
+            case INVESTIGATION -> properties.getInvestigationTimeoutSeconds();
+            case PRIVATE_TALK -> properties.getPrivateTalkTimeoutSeconds();
+            case FINAL_STATEMENT -> properties.getFinalStatementTimeoutSeconds();
             case VOTE -> properties.getVoteTimeoutSeconds();
-            default -> properties.getFreeChatTimeoutSeconds();
         };
     }
 
     private String phaseLabel(PhaseType phaseType) {
         return switch (phaseType) {
-            case FREE_CHAT -> "自由讨论";
+            case SCRIPT_READING -> "阅读剧本";
             case TURN_BASED -> "轮流发言";
+            case FREE_CHAT -> "自由讨论";
+            case INVESTIGATION -> "搜证";
+            case PRIVATE_TALK -> "密谈";
+            case FINAL_STATEMENT -> "最终陈述";
             case VOTE -> "投票";
-            default -> phaseType.name();
         };
     }
 
