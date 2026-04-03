@@ -15,4 +15,8 @@ public class AiEngineProperties {
     private int turnTimeoutSeconds = 60;
     private int voteTimeoutSeconds = 120;
     private int freeChatTimeoutSeconds = 300;
+    private int scriptReadingTimeoutSeconds = 180;
+    private int investigationTimeoutSeconds = 240;
+    private int privateTalkTimeoutSeconds = 180;
+    private int finalStatementTimeoutSeconds = 120;
 }
