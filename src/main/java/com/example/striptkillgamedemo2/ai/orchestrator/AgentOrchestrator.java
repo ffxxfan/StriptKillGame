@@ -57,12 +57,29 @@ public class AgentOrchestrator {
         // Get current phase
         PhaseType currentPhase = getCurrentPhaseType(script, room);
 
-        if (currentPhase == PhaseType.TURN_BASED) {
-            handleTurnBased(roomId, room, script, event);
-        } else if (currentPhase == PhaseType.FREE_CHAT) {
-            handleFreeChat(roomId, room, script, content, event.getSenderRoleId());
+        switch (currentPhase) {
+            case TURN_BASED, FINAL_STATEMENT -> handleTurnBased(roomId, room, script, event);
+            case FREE_CHAT -> handleFreeChat(roomId, room, script, content, event.getSenderRoleId());
+            case INVESTIGATION -> {
+                // During investigation, only search-related messages route to DM
+                if (isDmRequest(content)) {
+                    dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
+                            "玩家消息：" + content);
+                }
+                // Other messages during investigation are ignored by AI agents
+            }
+            case SCRIPT_READING -> {
+                // Silent reading phase — no AI agent responses
+            }
+            case PRIVATE_TALK -> {
+                // Placeholder: route only to participants of the private talk
+                // Full implementation deferred to batch B
+                handleFreeChat(roomId, room, script, content, event.getSenderRoleId());
+            }
+            case VOTE -> {
+                // No AI agents respond during voting
+            }
         }
-        // In VOTE phase, no AI agents respond to chat
     }
 
     private void handleTurnBased(String roomId, LiveGameRoom room, Script script,
@@ -97,7 +114,7 @@ public class AgentOrchestrator {
             room.setCurrentSpeakerRoleId(null);
             liveGameRoomService.save(room);
             dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
-                    "所有角色发言完毕，请决定下一步：进入自由讨论、跳过到投票检查、或推进到下一幕。使用 decidePhaseTransition 工具。");
+                    "所有角色发言完毕，请决定下一步。使用 transitionPhase 工具：NEXT_PHASE 进入下一环节，或 NEXT_STAGE 推进到下一幕。");
         }
     }
 
