@@ -21,6 +21,7 @@ public class PhaseTimerService {
     private final LiveGameRoomService liveGameRoomService;
     private final SimpMessagingTemplate messagingTemplate;
     private final DmExecutor dmExecutor;
+    private final VoteService voteService;
 
     /** Reminder threshold — warn when this many seconds remain. */
     private static final int REMINDER_BEFORE_SECONDS = 60;
@@ -89,9 +90,15 @@ public class PhaseTimerService {
                             "phaseType", phaseType.name(),
                             "content", timeoutMsg));
 
-            // Notify DM Agent to transition
-            dmExecutor.executeDmAction(roomId, null,
-                    timeoutMsg + "请立即使用 transitionPhase 工具（action=NEXT_PHASE）推进到下一个环节。");
+            // Notify DM Agent to transition (or close vote)
+            if (phaseType == PhaseType.VOTE) {
+                // Vote timeout: close vote and notify DM with results
+                voteService.closeVoteAndNotifyDm(roomId);
+            } else {
+                // Non-vote timeout: tell DM to transition
+                dmExecutor.executeDmAction(roomId, null,
+                        timeoutMsg + "请立即使用 transitionPhase 工具（action=NEXT_PHASE）推进到下一个环节。");
+            }
 
             log.info("[PhaseTimer] expired, room={}, phase={}", roomId, phaseType);
         }, duration, TimeUnit.SECONDS);
