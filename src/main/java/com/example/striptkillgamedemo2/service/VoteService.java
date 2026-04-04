@@ -6,9 +6,9 @@ import com.example.striptkillgamedemo2.entity.redis.VoteRecord;
 import com.example.striptkillgamedemo2.entity.redis.VoteSession;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -20,7 +20,6 @@ import java.util.List;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class VoteService {
 
     private final LiveGameRoomService liveGameRoomService;
@@ -28,6 +27,18 @@ public class VoteService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
     private final DmExecutor dmExecutor;
+
+    public VoteService(LiveGameRoomService liveGameRoomService,
+                       StringRedisTemplate redisTemplate,
+                       SimpMessagingTemplate messagingTemplate,
+                       ObjectMapper objectMapper,
+                       @Lazy DmExecutor dmExecutor) {
+        this.liveGameRoomService = liveGameRoomService;
+        this.redisTemplate = redisTemplate;
+        this.messagingTemplate = messagingTemplate;
+        this.objectMapper = objectMapper;
+        this.dmExecutor = dmExecutor;
+    }
 
     private static final String VOTES_KEY_PREFIX = "game:";
     private static final String VOTES_KEY_SUFFIX = ":votes";

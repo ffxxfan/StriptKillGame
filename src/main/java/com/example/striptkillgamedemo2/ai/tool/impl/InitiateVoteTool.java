@@ -14,6 +14,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,7 +25,6 @@ import java.util.Set;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class InitiateVoteTool implements DmTool {
 
     private final LiveGameRoomService liveGameRoomService;
@@ -32,6 +32,18 @@ public class InitiateVoteTool implements DmTool {
     private final AiEngineProperties aiEngineProperties;
     private final AgentExecutor agentExecutor;
     private final PhaseTimerService phaseTimerService;
+
+    public InitiateVoteTool(LiveGameRoomService liveGameRoomService,
+                            SimpMessagingTemplate messagingTemplate,
+                            AiEngineProperties aiEngineProperties,
+                            @Lazy AgentExecutor agentExecutor,
+                            PhaseTimerService phaseTimerService) {
+        this.liveGameRoomService = liveGameRoomService;
+        this.messagingTemplate = messagingTemplate;
+        this.aiEngineProperties = aiEngineProperties;
+        this.agentExecutor = agentExecutor;
+        this.phaseTimerService = phaseTimerService;
+    }
 
     @Data
     public static class Input {

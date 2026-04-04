@@ -3,8 +3,8 @@ package com.example.striptkillgamedemo2.service;
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.config.AiEngineProperties;
 import com.example.striptkillgamedemo2.entity.enums.PhaseType;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -14,7 +14,6 @@ import java.util.concurrent.*;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class PhaseTimerService {
 
     private final AiEngineProperties properties;
@@ -22,6 +21,18 @@ public class PhaseTimerService {
     private final SimpMessagingTemplate messagingTemplate;
     private final DmExecutor dmExecutor;
     private final VoteService voteService;
+
+    public PhaseTimerService(AiEngineProperties properties,
+                             LiveGameRoomService liveGameRoomService,
+                             SimpMessagingTemplate messagingTemplate,
+                             @Lazy DmExecutor dmExecutor,
+                             VoteService voteService) {
+        this.properties = properties;
+        this.liveGameRoomService = liveGameRoomService;
+        this.messagingTemplate = messagingTemplate;
+        this.dmExecutor = dmExecutor;
+        this.voteService = voteService;
+    }
 
     /** Reminder threshold — warn when this many seconds remain. */
     private static final int REMINDER_BEFORE_SECONDS = 60;
