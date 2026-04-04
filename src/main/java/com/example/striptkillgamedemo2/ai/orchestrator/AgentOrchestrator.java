@@ -69,8 +69,7 @@ public class AgentOrchestrator {
             aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0)).set(0);
         }
 
-        // AI message: check round limit before processing
-        boolean lastAiRound = false;
+        // AI message: increment round counter, drop if over limit
         if (fromAi) {
             AtomicInteger counter = aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0));
             int currentRound = counter.incrementAndGet();
@@ -79,10 +78,6 @@ public class AgentOrchestrator {
             if (currentRound > effectiveMax) {
                 log.info("[AI-Round] room={} round={} exceeds max={}, dropping", roomId, currentRound, effectiveMax);
                 return;
-            }
-            if (currentRound == effectiveMax) {
-                lastAiRound = true;
-                log.info("[AI-Round] room={} round={} is last round, will inject redirect", roomId, currentRound);
             }
         }
 
@@ -98,7 +93,7 @@ public class AgentOrchestrator {
                 if (!fromAi) handleTurnBased(roomId, room, script, event);
             }
             case FREE_CHAT -> handleFreeChat(roomId, room, script, content,
-                    event.getSenderRoleId(), fromAi, lastAiRound);
+                    event.getSenderRoleId(), fromAi);
             case INVESTIGATION -> {
                 if (!fromAi && isDmRequest(content)) {
                     dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
@@ -108,7 +103,7 @@ public class AgentOrchestrator {
             case SCRIPT_READING -> { }
             case PRIVATE_TALK -> {
                 handleFreeChat(roomId, room, script, content,
-                        event.getSenderRoleId(), fromAi, lastAiRound);
+                        event.getSenderRoleId(), fromAi);
             }
             case VOTE -> { }
         }
@@ -151,8 +146,11 @@ public class AgentOrchestrator {
     }
 
     private void handleFreeChat(String roomId, LiveGameRoom room, Script script,
-                                 String content, ObjectId senderRoleId, boolean fromAi,
-                                 boolean lastAiRound) {
+                                 String content, ObjectId senderRoleId, boolean fromAi) {
+        // Compute redirect flag at trigger time: will the next AI response(s) hit the round limit?
+        AtomicInteger counter = aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0));
+        int effectiveMax = calculateEffectiveMaxRounds(room);
+
         // Layer 1: @mention
         Matcher matcher = MENTION_PATTERN.matcher(content);
         while (matcher.find()) {
@@ -169,7 +167,8 @@ public class AgentOrchestrator {
                     boolean isAi = room.getMembers().stream()
                             .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
                     if (isAi) {
-                        agentExecutor.executeAgentReply(roomId, role.getId(), lastAiRound);
+                        boolean lastRound = counter.get() + 1 >= effectiveMax;
+                        agentExecutor.executeAgentReply(roomId, role.getId(), lastRound);
                         return;
                     }
                 }
@@ -181,7 +180,8 @@ public class AgentOrchestrator {
         namedIds.removeIf(id -> Objects.equals(id, senderRoleId));
         if (!namedIds.isEmpty()) {
             List<ObjectId> limited = namedIds.size() > 2 ? namedIds.subList(0, 2) : namedIds;
-            agentExecutor.executeAgentRepliesSequentially(roomId, limited, lastAiRound);
+            boolean lastRound = counter.get() + limited.size() >= effectiveMax;
+            agentExecutor.executeAgentRepliesSequentially(roomId, limited, lastRound);
             return;
         }
 

@@ -34,14 +34,14 @@
           </el-avatar>
           <div class="msg-body">
             <div class="msg-name">{{ msg.senderRoleName }}</div>
-            <div class="msg-bubble left">{{ msg.content }}</div>
+            <div class="msg-bubble left markdown-body" v-html="renderMarkdown(msg.content)"></div>
           </div>
         </template>
         <!-- Right: self -->
         <template v-else>
           <div class="msg-body">
             <div class="msg-name self">{{ msg.senderRoleName }}</div>
-            <div class="msg-bubble right">{{ msg.content }}</div>
+            <div class="msg-bubble right markdown-body" v-html="renderMarkdown(msg.content)"></div>
           </div>
           <el-avatar :size="36" :src="msg.senderAvatar" class="msg-avatar">
             {{ msg.senderRoleName?.charAt(0) }}
@@ -106,13 +106,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Document } from '@element-plus/icons-vue'
 import { getRoom, leaveRoom } from '../api/room'
 import { getMyScriptContent } from '../api/script'
 import { useGameStore } from '../stores/game'
 import { useWebSocket } from '../composables/useWebSocket'
+import { marked } from 'marked'
 
 interface StageContent {
   stageNumber: number
@@ -214,9 +215,16 @@ function openScriptDrawer() {
   hasNewStage.value = false
 }
 
+// Configure marked for chat: no async, sanitize breaks
+marked.setOptions({ breaks: true, gfm: true })
+
+function renderMarkdown(content: string): string {
+  if (!content) return ''
+  return marked.parse(content, { async: false }) as string
+}
+
 function formatContent(content: string): string {
-  // Convert newlines to <br> for display
-  return content.replace(/\n/g, '<br>')
+  return renderMarkdown(content)
 }
 
 /** Only auto-scroll if user is near the bottom (within threshold). */
@@ -349,6 +357,38 @@ async function handleLeave() {
   background: #e94560;
   color: #fff;
   border-top-right-radius: 2px;
+}
+
+/* Markdown inside chat bubbles */
+.msg-bubble.markdown-body :deep(p) {
+  margin: 0 0 0.4em;
+}
+.msg-bubble.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+.msg-bubble.markdown-body :deep(ul),
+.msg-bubble.markdown-body :deep(ol) {
+  margin: 0.2em 0;
+  padding-left: 1.4em;
+}
+.msg-bubble.markdown-body :deep(strong) {
+  color: #e0c97f;
+}
+.msg-bubble.right.markdown-body :deep(strong) {
+  color: #fff;
+  font-weight: 700;
+}
+.msg-bubble.markdown-body :deep(code) {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+.msg-bubble.markdown-body :deep(blockquote) {
+  margin: 0.3em 0;
+  padding-left: 8px;
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  opacity: 0.85;
 }
 
 .system-message {
