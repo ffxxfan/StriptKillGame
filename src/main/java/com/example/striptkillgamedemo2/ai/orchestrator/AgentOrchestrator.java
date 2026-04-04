@@ -3,6 +3,7 @@ package com.example.striptkillgamedemo2.ai.orchestrator;
 import com.example.striptkillgamedemo2.ai.event.ChatMessageEvent;
 import com.example.striptkillgamedemo2.ai.executor.AgentExecutor;
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
+import com.example.striptkillgamedemo2.config.AiEngineProperties;
 import com.example.striptkillgamedemo2.entity.enums.PhaseType;
 import com.example.striptkillgamedemo2.entity.mongo.Member;
 import com.example.striptkillgamedemo2.entity.mongo.Role;
@@ -12,6 +13,7 @@ import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
 import com.example.striptkillgamedemo2.service.ScriptCacheService;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.bson.types.ObjectId;
@@ -21,6 +23,8 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,8 +37,16 @@ public class AgentOrchestrator {
     private final DmExecutor dmExecutor;
     private final LiveGameRoomService liveGameRoomService;
     private final ScriptCacheService scriptCacheService;
+    private final AiEngineProperties aiProperties;
 
     private static final Pattern MENTION_PATTERN = Pattern.compile("@(\\S+)");
+
+    // Feature 1: AI-to-AI round counter per room
+    private final ConcurrentHashMap<String, AtomicInteger> aiRoundCounters = new ConcurrentHashMap<>();
+
+    // Feature 2: Idle timer per room
+    private final ConcurrentHashMap<String, ScheduledFuture<?>> idleTimers = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService idleScheduler = Executors.newScheduledThreadPool(1);
 
     @EventListener
     public void onChatMessage(ChatMessageEvent event) {
@@ -46,6 +58,34 @@ public class AgentOrchestrator {
         String content = event.getContent();
         boolean fromAi = event.isFromAi();
 
+        // Reset idle timer on any message (human, AI, or DM)
+        PhaseType currentPhase = getCurrentPhaseType(script, room);
+        if (currentPhase == PhaseType.FREE_CHAT) {
+            resetIdleTimer(roomId, room, script);
+        }
+
+        // Human message resets AI round counter
+        if (!fromAi) {
+            aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0)).set(0);
+        }
+
+        // AI message: check round limit before processing
+        boolean lastAiRound = false;
+        if (fromAi) {
+            AtomicInteger counter = aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0));
+            int currentRound = counter.incrementAndGet();
+            int effectiveMax = calculateEffectiveMaxRounds(room);
+
+            if (currentRound > effectiveMax) {
+                log.info("[AI-Round] room={} round={} exceeds max={}, dropping", roomId, currentRound, effectiveMax);
+                return;
+            }
+            if (currentRound == effectiveMax) {
+                lastAiRound = true;
+                log.info("[AI-Round] room={} round={} is last round, will inject redirect", roomId, currentRound);
+            }
+        }
+
         // DM requests only from human players
         if (!fromAi && isDmRequest(content)) {
             dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
@@ -53,31 +93,24 @@ public class AgentOrchestrator {
             return;
         }
 
-        // Get current phase
-        PhaseType currentPhase = getCurrentPhaseType(script, room);
-
         switch (currentPhase) {
             case TURN_BASED, FINAL_STATEMENT -> {
                 if (!fromAi) handleTurnBased(roomId, room, script, event);
             }
             case FREE_CHAT -> handleFreeChat(roomId, room, script, content,
-                    event.getSenderRoleId(), fromAi);
+                    event.getSenderRoleId(), fromAi, lastAiRound);
             case INVESTIGATION -> {
                 if (!fromAi && isDmRequest(content)) {
                     dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
                             "玩家消息：" + content);
                 }
             }
-            case SCRIPT_READING -> {
-                // Silent reading phase — no AI agent responses
-            }
+            case SCRIPT_READING -> { }
             case PRIVATE_TALK -> {
                 handleFreeChat(roomId, room, script, content,
-                        event.getSenderRoleId(), fromAi);
+                        event.getSenderRoleId(), fromAi, lastAiRound);
             }
-            case VOTE -> {
-                // No AI agents respond during voting
-            }
+            case VOTE -> { }
         }
     }
 
@@ -118,13 +151,13 @@ public class AgentOrchestrator {
     }
 
     private void handleFreeChat(String roomId, LiveGameRoom room, Script script,
-                                 String content, ObjectId senderRoleId, boolean fromAi) {
-        // Layer 1: @mention — check for explicit @RoleName mentions
+                                 String content, ObjectId senderRoleId, boolean fromAi,
+                                 boolean lastAiRound) {
+        // Layer 1: @mention
         Matcher matcher = MENTION_PATTERN.matcher(content);
         while (matcher.find()) {
             String mentionedName = matcher.group(1);
 
-            // DM mentions only from human players
             if (!fromAi && ("DM".equalsIgnoreCase(mentionedName) || "主持人".equals(mentionedName))) {
                 dmExecutor.executeDmAction(roomId, senderRoleId, "玩家消息：" + content);
                 return;
@@ -132,29 +165,27 @@ public class AgentOrchestrator {
 
             for (Role role : script.getRoles()) {
                 if (role.getName().equals(mentionedName)) {
-                    // Don't trigger the sender itself
                     if (Objects.equals(role.getId(), senderRoleId)) continue;
                     boolean isAi = room.getMembers().stream()
                             .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
                     if (isAi) {
-                        agentExecutor.executeAgentReply(roomId, role.getId());
+                        agentExecutor.executeAgentReply(roomId, role.getId(), lastAiRound);
                         return;
                     }
                 }
             }
         }
 
-        // Layer 2: role name in text — find AI roles whose name appears in the message
+        // Layer 2: role name in text
         List<ObjectId> namedIds = findNamedAiRoles(content, script, room);
-        // Exclude sender to prevent self-triggering
         namedIds.removeIf(id -> Objects.equals(id, senderRoleId));
         if (!namedIds.isEmpty()) {
             List<ObjectId> limited = namedIds.size() > 2 ? namedIds.subList(0, 2) : namedIds;
-            agentExecutor.executeAgentRepliesSequentially(roomId, limited);
+            agentExecutor.executeAgentRepliesSequentially(roomId, limited, lastAiRound);
             return;
         }
 
-        // Layer 3: DM decides — only for human messages to prevent infinite loops
+        // Layer 3: DM decides — only for human messages
         if (fromAi) return;
 
         List<String> candidateNames = script.getRoles().stream()
@@ -188,6 +219,69 @@ public class AgentOrchestrator {
         if (content.contains("投票") || content.contains("表决")) return true;
         if (content.contains("自由讨论") || content.contains("开放讨论")) return true;
         return false;
+    }
+
+    int calculateEffectiveMaxRounds(LiveGameRoom room) {
+        int configMax = aiProperties.getMaxAiChatRounds();
+        long humanCount = room.getMembers().stream()
+                .filter(m -> !m.isAi() && !m.isDm())
+                .count();
+        return (int) Math.max(2, configMax - (humanCount - 1));
+    }
+
+    /** Reset (or start) the idle timer for a room. Called on any activity. */
+    public void resetIdleTimer(String roomId, LiveGameRoom room, Script script) {
+        cancelIdleTimer(roomId);
+
+        int timeout = aiProperties.getIdleTimeoutSeconds();
+        if (timeout <= 0) return;
+
+        ScheduledFuture<?> future = idleScheduler.schedule(() -> {
+            // Re-check phase at fire time
+            LiveGameRoom currentRoom = liveGameRoomService.get(roomId);
+            if (currentRoom == null) return;
+            Script currentScript = scriptCacheService.getScript(new ObjectId(currentRoom.getScriptId()));
+            PhaseType phase = getCurrentPhaseType(currentScript, currentRoom);
+            if (phase != PhaseType.FREE_CHAT) return;
+
+            log.info("[IdleTimer] fired for room={}, triggering DM", roomId);
+            dmExecutor.executeDmAction(roomId, null,
+                    "自由讨论中所有参与者已沉默超过一分钟。请主动推进游戏进程：可以发起新话题、总结讨论要点、或使用 transitionPhase 工具推进到下一环节。");
+        }, timeout, TimeUnit.SECONDS);
+
+        idleTimers.put(roomId, future);
+    }
+
+    /** Reset idle timer from external signal (user activity). */
+    public void resetIdleTimer(String roomId) {
+        LiveGameRoom room = liveGameRoomService.get(roomId);
+        if (room == null || room.getScriptId() == null) return;
+        Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
+        if (getCurrentPhaseType(script, room) == PhaseType.FREE_CHAT) {
+            resetIdleTimer(roomId, room, script);
+        }
+    }
+
+    public void cancelIdleTimer(String roomId) {
+        ScheduledFuture<?> existing = idleTimers.remove(roomId);
+        if (existing != null && !existing.isDone()) {
+            existing.cancel(false);
+        }
+    }
+
+    public void resetRoundCounter(String roomId) {
+        AtomicInteger counter = aiRoundCounters.get(roomId);
+        if (counter != null) counter.set(0);
+    }
+
+    public void cleanupRoom(String roomId) {
+        cancelIdleTimer(roomId);
+        aiRoundCounters.remove(roomId);
+    }
+
+    @PreDestroy
+    public void shutdown() {
+        idleScheduler.shutdownNow();
     }
 
     private PhaseType getCurrentPhaseType(Script script, LiveGameRoom room) {

@@ -72,7 +72,7 @@ public class SelectRespondentsTool implements DmTool {
 
         // Trigger sequentially so agents speak one at a time
         if (!aiRoleIds.isEmpty()) {
-            agentExecutor.executeAgentRepliesSequentially(room.getRoomId(), aiRoleIds);
+            agentExecutor.executeAgentRepliesSequentially(room.getRoomId(), aiRoleIds, false);
             // Mark that agents will speak — suppress DM's own text output
             ctx.setAgentDelegated(true);
         }

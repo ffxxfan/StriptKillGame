@@ -19,4 +19,6 @@ public class AiEngineProperties {
     private int investigationTimeoutSeconds = 240;
     private int privateTalkTimeoutSeconds = 180;
     private int finalStatementTimeoutSeconds = 120;
+    private int maxAiChatRounds = 3;
+    private int idleTimeoutSeconds = 60;
 }

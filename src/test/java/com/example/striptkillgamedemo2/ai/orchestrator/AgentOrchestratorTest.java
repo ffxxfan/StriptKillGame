@@ -2,6 +2,7 @@ package com.example.striptkillgamedemo2.ai.orchestrator;
 
 import com.example.striptkillgamedemo2.ai.executor.AgentExecutor;
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
+import com.example.striptkillgamedemo2.config.AiEngineProperties;
 import com.example.striptkillgamedemo2.entity.mongo.Member;
 import com.example.striptkillgamedemo2.entity.mongo.Role;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
@@ -13,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,14 +22,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class AgentOrchestratorTest {
 
     private AgentOrchestrator orchestrator;
+    private AiEngineProperties props;
 
     @BeforeEach
     void setUp() {
+        props = new AiEngineProperties();
+        props.setMaxAiChatRounds(3);
+        props.setIdleTimeoutSeconds(60);
         orchestrator = new AgentOrchestrator(
                 Mockito.mock(AgentExecutor.class),
                 Mockito.mock(DmExecutor.class),
                 Mockito.mock(LiveGameRoomService.class),
-                Mockito.mock(ScriptCacheService.class)
+                Mockito.mock(ScriptCacheService.class),
+                props
         );
     }
 
@@ -102,5 +109,64 @@ class AgentOrchestratorTest {
 
         List<ObjectId> result = orchestrator.findNamedAiRoles("今天天气不错", script, room);
         assertTrue(result.isEmpty());
+    }
+
+    // --- Feature 1: Effective max calculation tests ---
+
+    @Test
+    void effectiveMax_oneHuman_returnsConfigMax() {
+        LiveGameRoom room = buildRoomWithHumans(1);
+        assertEquals(3, orchestrator.calculateEffectiveMaxRounds(room));
+    }
+
+    @Test
+    void effectiveMax_twoHumans_reducedByOne() {
+        LiveGameRoom room = buildRoomWithHumans(2);
+        assertEquals(2, orchestrator.calculateEffectiveMaxRounds(room));
+    }
+
+    @Test
+    void effectiveMax_manyHumans_floorAtTwo() {
+        LiveGameRoom room = buildRoomWithHumans(5);
+        assertEquals(2, orchestrator.calculateEffectiveMaxRounds(room));
+    }
+
+    @Test
+    void roundCounter_resetDoesNotThrow() {
+        String roomId = "test-room";
+        assertDoesNotThrow(() -> orchestrator.resetRoundCounter(roomId));
+    }
+
+    @Test
+    void cleanupRoom_removesState() {
+        String roomId = "cleanup-room";
+        orchestrator.resetRoundCounter(roomId);
+        assertDoesNotThrow(() -> orchestrator.cleanupRoom(roomId));
+    }
+
+    private LiveGameRoom buildRoomWithHumans(int humanCount) {
+        LiveGameRoom room = new LiveGameRoom();
+        List<Member> members = new ArrayList<>();
+        for (int i = 0; i < humanCount; i++) {
+            Member m = new Member();
+            m.setAi(false);
+            m.setDm(false);
+            members.add(m);
+        }
+        // Add 2 AI members
+        for (int i = 0; i < 2; i++) {
+            Member m = new Member();
+            m.setAi(true);
+            m.setDm(false);
+            members.add(m);
+        }
+        // Add DM
+        Member dm = new Member();
+        dm.setAi(true);
+        dm.setDm(true);
+        members.add(dm);
+
+        room.setMembers(members);
+        return room;
     }
 }

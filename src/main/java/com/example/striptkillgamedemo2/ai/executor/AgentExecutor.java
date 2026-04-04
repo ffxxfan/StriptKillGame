@@ -44,19 +44,35 @@ public class AgentExecutor {
     private static final String THINK_OPEN = "<think>";
     private static final String THINK_CLOSE = "</think>";
     private static final int STREAM_CHUNK_SIZE = 2;
-    private static final long STREAM_CHUNK_DELAY_MS = 30;
+    private static final long STREAM_CHUNK_DELAY_MS = 80;
+    private static final long MSG_GAP_DELAY_MS = 1800;
 
     /** Trigger a single agent reply asynchronously. */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId) {
-        doExecuteAgentReply(roomId, roleId);
+        doExecuteAgentReply(roomId, roleId, false);
+    }
+
+    /** Trigger a single agent reply with last-round redirect flag. */
+    @Async("aiExecutor")
+    public void executeAgentReply(String roomId, ObjectId roleId, boolean lastAiRound) {
+        doExecuteAgentReply(roomId, roleId, lastAiRound);
     }
 
     /** Trigger multiple agents sequentially (one finishes before the next starts). */
     @Async("aiExecutor")
     public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds) {
         for (ObjectId roleId : roleIds) {
-            doExecuteAgentReply(roomId, roleId);
+            doExecuteAgentReply(roomId, roleId, false);
+        }
+    }
+
+    @Async("aiExecutor")
+    public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds, boolean lastAiRound) {
+        for (int i = 0; i < roleIds.size(); i++) {
+            // Only the last agent in the batch gets the redirect flag
+            boolean isLast = lastAiRound && (i == roleIds.size() - 1);
+            doExecuteAgentReply(roomId, roleIds.get(i), isLast);
         }
     }
 
@@ -118,7 +134,7 @@ public class AgentExecutor {
         }
     }
 
-    private void doExecuteAgentReply(String roomId, ObjectId roleId) {
+    private void doExecuteAgentReply(String roomId, ObjectId roleId, boolean lastAiRound) {
         try {
             LiveGameRoom room = liveGameRoomService.get(roomId);
             if (room == null) return;
@@ -151,51 +167,71 @@ public class AgentExecutor {
                     room.getClueInstances(),
                     memoryFragments, recentMessages);
 
+            // Last AI round: inject redirect instruction
+            if (lastAiRound) {
+                promptText += "\n\n【系统指令】这是你在本轮 AI 对话中的最后一次发言机会，" +
+                        "请将话题自然地引向在场的玩家或主持人，邀请他们参与讨论或表达看法。";
+                log.info("[AgentReply] lastAiRound redirect injected for role={}", roleId);
+            }
+
             // Blocking call — avoids concurrent streaming issues and filters out thinking
-            log.info("[AgentReply] calling LLM for role={}, room={}, promptLen={}",
-                    targetRole.getName(), roomId, promptText.length());
+            log.info("[AgentReply] calling LLM for role={}, room={}, promptLen={}, promptContext={}",
+                    targetRole.getName(), roomId, promptText.length(), promptText);
             ChatResponse chatResponse = chatModel.call(new Prompt(promptText));
             log.info("[AgentReply] LLM returned, resultsCount={}",
                     chatResponse.getResults() != null ? chatResponse.getResults().size() : 0);
             String reply = extractReply(chatResponse);
             log.info("[AgentReply] extractedReply length={}, blank={}", reply.length(), reply.isBlank());
 
-            // Push final reply to frontend in small chunks for typing effect
-            String streamId = UUID.randomUUID().toString();
+            // Split reply by [MSG] into separate messages
+            String[] segments = reply.split("\\[MSG\\]");
             String streamTopic = "/topic/room." + roomId + ".stream";
-            int seq = 0;
 
-            for (int i = 0; i < reply.length(); i += STREAM_CHUNK_SIZE) {
-                String chunk = reply.substring(i, Math.min(i + STREAM_CHUNK_SIZE, reply.length()));
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("type", "STREAM_CHUNK");
-                payload.put("streamId", streamId);
-                payload.put("roleId", roleIdHex);
-                payload.put("roleName", targetRole.getName());
-                payload.put("chunk", chunk);
-                payload.put("seq", seq++);
-                messagingTemplate.convertAndSend(streamTopic, payload);
-                Thread.sleep(STREAM_CHUNK_DELAY_MS);
+            for (int s = 0; s < segments.length; s++) {
+                String segment = segments[s].trim();
+                if (segment.isEmpty()) continue;
+
+                // Pause between messages for natural feel
+                if (s > 0) {
+                    Thread.sleep(MSG_GAP_DELAY_MS);
+                }
+
+                // Each segment gets its own stream
+                String streamId = UUID.randomUUID().toString();
+                int seq = 0;
+
+                for (int i = 0; i < segment.length(); i += STREAM_CHUNK_SIZE) {
+                    String chunk = segment.substring(i, Math.min(i + STREAM_CHUNK_SIZE, segment.length()));
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("type", "STREAM_CHUNK");
+                    payload.put("streamId", streamId);
+                    payload.put("roleId", roleIdHex);
+                    payload.put("roleName", targetRole.getName());
+                    payload.put("chunk", chunk);
+                    payload.put("seq", seq++);
+                    messagingTemplate.convertAndSend(streamTopic, payload);
+                    Thread.sleep(STREAM_CHUNK_DELAY_MS);
+                }
+
+                // Store each segment as a separate message
+                gameChatService.storeAiMessage(roomId, roleId, segment, room);
+
+                // Send stream-end signal for this segment
+                Map<String, Object> endPayload = new LinkedHashMap<>();
+                endPayload.put("type", "STREAM_END");
+                endPayload.put("streamId", streamId);
+                endPayload.put("roleId", roleIdHex);
+                endPayload.put("seq", seq);
+                messagingTemplate.convertAndSend(streamTopic, endPayload);
             }
-
-            // Store message and publish event so other agents can react
-            if (!reply.isBlank()) {
-                gameChatService.storeAiMessage(roomId, roleId, reply, room);
-                eventPublisher.publishEvent(new ChatMessageEvent(
-                        this, roomId, roleId, reply, true));
-            }
-
-            // Send stream-end signal
-            Map<String, Object> endPayload = new LinkedHashMap<>();
-            endPayload.put("type", "STREAM_END");
-            endPayload.put("streamId", streamId);
-            endPayload.put("roleId", roleIdHex);
-            endPayload.put("seq", seq);
-            messagingTemplate.convertAndSend(streamTopic, endPayload);
 
             // Remove typing indicator
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                     Map.of("type", "TYPING_END", "roleId", roleIdHex));
+
+            // Publish event so orchestrator can advance turn in TURN_BASED mode
+            eventPublisher.publishEvent(new ChatMessageEvent(
+                    this, roomId, roleId, reply, true));
 
         } catch (Exception e) {
             log.error("Agent execution failed for role {} in room {}", roleId, roomId, e);

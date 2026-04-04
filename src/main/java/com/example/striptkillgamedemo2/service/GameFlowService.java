@@ -2,6 +2,7 @@ package com.example.striptkillgamedemo2.service;
 
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.ai.memory.MemoryManager;
+import com.example.striptkillgamedemo2.ai.orchestrator.AgentOrchestrator;
 import com.example.striptkillgamedemo2.ai.review.FinalReviewService;
 import com.example.striptkillgamedemo2.dto.StageContentDTO;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
@@ -40,6 +41,7 @@ public class GameFlowService {
     private final DmExecutor dmExecutor;
     private final MemoryManager memoryManager;
     private final ObjectMapper objectMapper;
+    private final AgentOrchestrator agentOrchestrator;
 
     public LiveGameRoom startGame(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
@@ -148,6 +150,10 @@ public class GameFlowService {
         liveGameRoomService.advanceStage(new ObjectId(roomId), nextStage);
         room.setCurrentStage(nextStage);
 
+        // Reset AI round counter and idle timer for new stage
+        agentOrchestrator.resetRoundCounter(roomId);
+        agentOrchestrator.cancelIdleTimer(roomId);
+
         ScriptStage stage = script.getStages().get(nextStage);
         messagingTemplate.convertAndSend("/topic/room." + roomId,
                 Map.of("type", "SYSTEM", "content", "进入新阶段: " + stage.getStageTitle()));
@@ -177,6 +183,8 @@ public class GameFlowService {
         room.setStatus(GameRoomStatus.FINISHED);
         room.setEndTime(LocalDateTime.now());
         liveGameRoomService.save(room);
+
+        agentOrchestrator.cleanupRoom(roomId);
 
         if (wasPlaying) {
             persistGameRecord(roomId, room);

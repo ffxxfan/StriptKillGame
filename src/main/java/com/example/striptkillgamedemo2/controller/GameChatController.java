@@ -1,6 +1,7 @@
 package com.example.striptkillgamedemo2.controller;
 
 import com.example.striptkillgamedemo2.ai.event.ChatMessageEvent;
+import com.example.striptkillgamedemo2.ai.orchestrator.AgentOrchestrator;
 import com.example.striptkillgamedemo2.dto.ChatMessageRequest;
 import com.example.striptkillgamedemo2.entity.enums.GameRoomStatus;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
@@ -26,6 +27,7 @@ public class GameChatController {
     private final GameChatService gameChatService;
     private final GameRoomService gameRoomService;
     private final ApplicationEventPublisher eventPublisher;
+    private final AgentOrchestrator agentOrchestrator;
 
     @MessageMapping("/chat.{roomId}")
     public void handleChatMessage(
@@ -57,5 +59,18 @@ public class GameChatController {
         // Publish event for AI engine
         eventPublisher.publishEvent(new ChatMessageEvent(
                 this, roomId, senderRoleId, request.getContent(), false));
+    }
+
+    @MessageMapping("/room.{roomId}.activity")
+    public void handleUserActivity(
+            @DestinationVariable String roomId,
+            SimpMessageHeaderAccessor headerAccessor) {
+
+        UsernamePasswordAuthenticationToken auth =
+                (UsernamePasswordAuthenticationToken) headerAccessor.getUser();
+        if (auth == null) return;
+
+        // User is actively browsing (script/chat scroll) — reset idle timer
+        agentOrchestrator.resetIdleTimer(roomId);
     }
 }
