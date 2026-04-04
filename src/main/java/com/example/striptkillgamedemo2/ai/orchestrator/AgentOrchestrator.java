@@ -38,18 +38,16 @@ public class AgentOrchestrator {
 
     @EventListener
     public void onChatMessage(ChatMessageEvent event) {
-        // Don't respond to AI messages to prevent loops
-        if (event.isFromAi()) return;
-
         String roomId = event.getRoomId();
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null || room.getScriptId() == null) return;
 
         Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
         String content = event.getContent();
+        boolean fromAi = event.isFromAi();
 
-        // Check for @DM mention or search/vote keywords
-        if (isDmRequest(content)) {
+        // DM requests only from human players
+        if (!fromAi && isDmRequest(content)) {
             dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
                     "玩家消息：" + content);
             return;
@@ -59,23 +57,23 @@ public class AgentOrchestrator {
         PhaseType currentPhase = getCurrentPhaseType(script, room);
 
         switch (currentPhase) {
-            case TURN_BASED, FINAL_STATEMENT -> handleTurnBased(roomId, room, script, event);
-            case FREE_CHAT -> handleFreeChat(roomId, room, script, content, event.getSenderRoleId());
+            case TURN_BASED, FINAL_STATEMENT -> {
+                if (!fromAi) handleTurnBased(roomId, room, script, event);
+            }
+            case FREE_CHAT -> handleFreeChat(roomId, room, script, content,
+                    event.getSenderRoleId(), fromAi);
             case INVESTIGATION -> {
-                // During investigation, only search-related messages route to DM
-                if (isDmRequest(content)) {
+                if (!fromAi && isDmRequest(content)) {
                     dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
                             "玩家消息：" + content);
                 }
-                // Other messages during investigation are ignored by AI agents
             }
             case SCRIPT_READING -> {
                 // Silent reading phase — no AI agent responses
             }
             case PRIVATE_TALK -> {
-                // Placeholder: route only to participants of the private talk
-                // Full implementation deferred to batch B
-                handleFreeChat(roomId, room, script, content, event.getSenderRoleId());
+                handleFreeChat(roomId, room, script, content,
+                        event.getSenderRoleId(), fromAi);
             }
             case VOTE -> {
                 // No AI agents respond during voting
@@ -120,19 +118,22 @@ public class AgentOrchestrator {
     }
 
     private void handleFreeChat(String roomId, LiveGameRoom room, Script script,
-                                 String content, ObjectId senderRoleId) {
+                                 String content, ObjectId senderRoleId, boolean fromAi) {
         // Layer 1: @mention — check for explicit @RoleName mentions
         Matcher matcher = MENTION_PATTERN.matcher(content);
         while (matcher.find()) {
             String mentionedName = matcher.group(1);
 
-            if ("DM".equalsIgnoreCase(mentionedName) || "主持人".equals(mentionedName)) {
+            // DM mentions only from human players
+            if (!fromAi && ("DM".equalsIgnoreCase(mentionedName) || "主持人".equals(mentionedName))) {
                 dmExecutor.executeDmAction(roomId, senderRoleId, "玩家消息：" + content);
                 return;
             }
 
             for (Role role : script.getRoles()) {
                 if (role.getName().equals(mentionedName)) {
+                    // Don't trigger the sender itself
+                    if (Objects.equals(role.getId(), senderRoleId)) continue;
                     boolean isAi = room.getMembers().stream()
                             .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
                     if (isAi) {
@@ -145,13 +146,17 @@ public class AgentOrchestrator {
 
         // Layer 2: role name in text — find AI roles whose name appears in the message
         List<ObjectId> namedIds = findNamedAiRoles(content, script, room);
+        // Exclude sender to prevent self-triggering
+        namedIds.removeIf(id -> Objects.equals(id, senderRoleId));
         if (!namedIds.isEmpty()) {
             List<ObjectId> limited = namedIds.size() > 2 ? namedIds.subList(0, 2) : namedIds;
             agentExecutor.executeAgentRepliesSequentially(roomId, limited);
             return;
         }
 
-        // Layer 3: DM decides — ask DM to pick 1-2 relevant respondents
+        // Layer 3: DM decides — only for human messages to prevent infinite loops
+        if (fromAi) return;
+
         List<String> candidateNames = script.getRoles().stream()
                 .filter(role -> room.getMembers().stream()
                         .anyMatch(m -> m.isAi() && !m.isDm() && Objects.equals(m.getRoleId(), role.getId())))

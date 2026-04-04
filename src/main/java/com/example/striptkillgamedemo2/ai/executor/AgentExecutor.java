@@ -1,5 +1,6 @@
 package com.example.striptkillgamedemo2.ai.executor;
 
+import com.example.striptkillgamedemo2.ai.event.ChatMessageEvent;
 import com.example.striptkillgamedemo2.ai.memory.MemoryManager;
 import com.example.striptkillgamedemo2.ai.prompt.PromptBuilder;
 import com.example.striptkillgamedemo2.entity.mongo.Role;
@@ -17,6 +18,7 @@ import org.bson.types.ObjectId;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ public class AgentExecutor {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
     private final VoteService voteService;
+    private final ApplicationEventPublisher eventPublisher;
 
     private static final String THINK_OPEN = "<think>";
     private static final String THINK_CLOSE = "</think>";
@@ -175,9 +178,11 @@ public class AgentExecutor {
                 Thread.sleep(STREAM_CHUNK_DELAY_MS);
             }
 
-            // Store message
+            // Store message and publish event so other agents can react
             if (!reply.isBlank()) {
                 gameChatService.storeAiMessage(roomId, roleId, reply, room);
+                eventPublisher.publishEvent(new ChatMessageEvent(
+                        this, roomId, roleId, reply, true));
             }
 
             // Send stream-end signal
