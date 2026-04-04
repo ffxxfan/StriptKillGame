@@ -167,11 +167,22 @@ public class AgentExecutor {
                     room.getClueInstances(),
                     memoryFragments, recentMessages);
 
-            // Last AI round: inject redirect instruction
+            // Last AI round: inject redirect instruction with real player names
             if (lastAiRound) {
-                promptText += "\n\n【系统指令】这是你在本轮 AI 对话中的最后一次发言机会，" +
-                        "请将话题自然地引向在场的玩家或主持人，邀请他们参与讨论或表达看法。";
-                log.info("[AgentReply] lastAiRound redirect injected for role={}", roleId);
+                List<String> humanNames = room.getMembers().stream()
+                        .filter(m -> !m.isAi() && !m.isDm() && m.getRoleId() != null)
+                        .map(m -> script.getRoles().stream()
+                                .filter(r -> Objects.equals(r.getId(), m.getRoleId()))
+                                .map(Role::getName)
+                                .findFirst().orElse(null))
+                        .filter(Objects::nonNull)
+                        .toList();
+                String playerList = humanNames.isEmpty() ? "在场的真实玩家" : String.join("、", humanNames);
+                promptText += "\n\n【系统指令】这是你在本轮 AI 对话中的最后一次发言机会。" +
+                        "真实玩家是：" + playerList + "。" +
+                        "请将话题自然地引向这些真实玩家，点名邀请他们参与讨论或表达看法。" +
+                        "如有流程上的需求（如请求投票、搜证等），则引向主持人（DM）。";
+                log.info("[AgentReply] lastAiRound redirect injected for role={}, humanPlayers={}", roleId, humanNames);
             }
 
             // Blocking call — avoids concurrent streaming issues and filters out thinking

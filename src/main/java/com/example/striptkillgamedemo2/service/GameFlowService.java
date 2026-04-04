@@ -42,6 +42,7 @@ public class GameFlowService {
     private final MemoryManager memoryManager;
     private final ObjectMapper objectMapper;
     private final AgentOrchestrator agentOrchestrator;
+    private final PhaseTimerService phaseTimerService;
 
     public LiveGameRoom startGame(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
@@ -86,6 +87,18 @@ public class GameFlowService {
 
         messagingTemplate.convertAndSend("/topic/room." + roomId,
                 Map.of("type", "SYSTEM", "content", "游戏开始！当前阶段: " + stageTitle));
+
+        // Start timer for first phase
+        if (script.getStages() != null && !script.getStages().isEmpty()) {
+            ScriptStage firstStage = script.getStages().get(0);
+            if (firstStage.getPhases() != null && !firstStage.getPhases().isEmpty()) {
+                StagePhase firstPhase = firstStage.getPhases().get(0);
+                if (firstPhase.getTimeLimitSeconds() > 0) {
+                    phaseTimerService.startPhaseTimer(roomId, firstPhase.getType(),
+                            firstPhase.getTimeLimitSeconds());
+                }
+            }
+        }
 
         // Trigger DM to signal stage update and deliver opening narration
         dmExecutor.executeDmAction(roomId, null,

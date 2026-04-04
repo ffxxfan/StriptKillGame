@@ -20,7 +20,7 @@
     </header>
 
     <!-- Chat Area -->
-    <div class="chat-area" ref="chatAreaRef">
+    <div class="chat-area" ref="chatAreaRef" @scroll="onChatScroll">
       <div
         v-for="msg in gameStore.messages"
         :key="msg.messageId"
@@ -133,6 +133,7 @@ const roomDetail = ref<any>(null)
 const inputText = ref('')
 const chatAreaRef = ref<HTMLElement | null>(null)
 const systemMessages = ref<string[]>([])
+const userScrolledUp = ref(false)
 
 // Script drawer state
 const scriptDrawerVisible = ref(false)
@@ -218,10 +219,18 @@ function formatContent(content: string): string {
   return content.replace(/\n/g, '<br>')
 }
 
+/** Only auto-scroll if user is near the bottom (within threshold). */
 function scrollToBottom() {
-  if (chatAreaRef.value) {
+  if (chatAreaRef.value && !userScrolledUp.value) {
     chatAreaRef.value.scrollTop = chatAreaRef.value.scrollHeight
   }
+}
+
+function onChatScroll() {
+  if (!chatAreaRef.value) return
+  const el = chatAreaRef.value
+  const threshold = 150
+  userScrolledUp.value = el.scrollTop + el.clientHeight < el.scrollHeight - threshold
 }
 
 function handleSend() {
