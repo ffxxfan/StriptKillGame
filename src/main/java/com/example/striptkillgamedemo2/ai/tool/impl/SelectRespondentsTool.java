@@ -3,6 +3,8 @@ package com.example.striptkillgamedemo2.ai.tool.impl;
 import com.example.striptkillgamedemo2.ai.executor.AgentExecutor;
 import com.example.striptkillgamedemo2.ai.tool.DmTool;
 import com.example.striptkillgamedemo2.ai.tool.DmToolContext;
+import com.example.striptkillgamedemo2.entity.mongo.Member;
+import com.example.striptkillgamedemo2.entity.mongo.Role;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import com.example.striptkillgamedemo2.entity.enums.PhaseType;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 @Slf4j
@@ -26,7 +29,8 @@ public class SelectRespondentsTool implements DmTool {
     @Data
     public static class Input {
         private String messageContent;
-        private List<String> candidateRoleIds;
+        /** Role names (e.g. "庄主白峰") selected by the DM. */
+        private List<String> selectedRoleNames;
     }
 
     @Override
@@ -36,7 +40,7 @@ public class SelectRespondentsTool implements DmTool {
 
     @Override
     public String description() {
-        return "根据消息内容选择1-2个最相关的AI角色进行回复。选中的角色将自动触发发言。";
+        return "根据消息内容选择1-2个最相关的AI角色名称进行回复。传入角色名称列表，选中的角色将自动触发发言。";
     }
 
     @Override
@@ -47,31 +51,53 @@ public class SelectRespondentsTool implements DmTool {
     @Override
     public Object execute(Object rawInput, DmToolContext ctx) {
         Input input = (Input) rawInput;
-        List<String> candidates = input.getCandidateRoleIds();
+        List<String> names = input.getSelectedRoleNames();
 
-        if (candidates == null || candidates.isEmpty()) {
+        if (names == null || names.isEmpty()) {
             return Map.of("respondents", List.of(), "triggered", 0);
         }
 
-        List<String> selected = candidates.size() > 2 ? candidates.subList(0, 2) : candidates;
+        List<String> selected = names.size() > 2 ? names.subList(0, 2) : names;
 
         LiveGameRoom room = ctx.getRoom();
-        int triggered = 0;
 
-        for (String roleIdHex : selected) {
-            // Only trigger AI members
-            boolean isAi = room.getMembers().stream()
-                    .anyMatch(m -> m.isAi() && m.getRoleId() != null
-                            && m.getRoleId().toHexString().equals(roleIdHex));
-            if (isAi) {
-                agentExecutor.executeAgentReply(room.getRoomId(), new ObjectId(roleIdHex));
-                triggered++;
-                log.info("[selectRespondents] triggered agent reply for role {}", roleIdHex);
-            }
+        // Resolve role names to ObjectIds via script roles + room members
+        List<ObjectId> aiRoleIds = selected.stream()
+                .map(name -> resolveAiRoleId(name, ctx, room))
+                .filter(Objects::nonNull)
+                .toList();
+
+        log.info("[selectRespondents] resolved {} names to {} roleIds: {}",
+                selected.size(), aiRoleIds.size(), aiRoleIds);
+
+        // Trigger sequentially so agents speak one at a time
+        if (!aiRoleIds.isEmpty()) {
+            agentExecutor.executeAgentRepliesSequentially(room.getRoomId(), aiRoleIds);
+            // Mark that agents will speak — suppress DM's own text output
+            ctx.setAgentDelegated(true);
         }
 
         log.info("[selectRespondents] message='{}', selected={}, triggered={}",
-                input.getMessageContent(), selected, triggered);
-        return Map.of("respondents", selected, "triggered", triggered);
+                input.getMessageContent(), selected, aiRoleIds.size());
+        return Map.of("respondents", selected, "triggered", aiRoleIds.size());
+    }
+
+    /** Match a role name to an AI member's roleId (fuzzy: contains match). */
+    private ObjectId resolveAiRoleId(String name, DmToolContext ctx, LiveGameRoom room) {
+        String trimmed = name.trim();
+        for (Role role : ctx.getScript().getRoles()) {
+            if (role.getName() == null) continue;
+            // Exact match or either side contains the other (handles LLM truncation)
+            if (role.getName().equals(trimmed)
+                    || role.getName().contains(trimmed)
+                    || trimmed.contains(role.getName())) {
+                boolean isAi = room.getMembers().stream()
+                        .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
+                if (isAi) return role.getId();
+            }
+        }
+        log.warn("[selectRespondents] could not resolve role name '{}', available roles: {}",
+                name, ctx.getScript().getRoles().stream().map(Role::getName).toList());
+        return null;
     }
 }

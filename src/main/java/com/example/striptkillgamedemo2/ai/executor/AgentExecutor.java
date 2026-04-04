@@ -92,13 +92,7 @@ public class AgentExecutor {
                     "请只回复选项的完整文本，不要附加任何解释。";
 
             ChatResponse chatResponse = chatModel.call(new Prompt(agentPrompt + voteInstruction));
-            String reply = "";
-            if (chatResponse.getResults() != null
-                    && chatResponse.getResults().size() > 1
-                    && chatResponse.getResults().get(1).getOutput() != null
-                    && chatResponse.getResults().get(1).getOutput().getText() != null) {
-                reply = stripThinkTags(chatResponse.getResults().get(1).getOutput().getText()).trim();
-            }
+            String reply = extractReply(chatResponse).trim();
 
             // Match reply to an option (exact or contains)
             final String finalReply = reply;
@@ -155,13 +149,13 @@ public class AgentExecutor {
                     memoryFragments, recentMessages);
 
             // Blocking call — avoids concurrent streaming issues and filters out thinking
+            log.info("[AgentReply] calling LLM for role={}, room={}, promptLen={}",
+                    targetRole.getName(), roomId, promptText.length());
             ChatResponse chatResponse = chatModel.call(new Prompt(promptText));
-            String reply = "";
-            if (chatResponse.getResults() != null
-                    && chatResponse.getResults().get(1).getOutput() != null
-                    && chatResponse.getResults().get(1).getOutput().getText() != null) {
-                reply = stripThinkTags(chatResponse.getResults().get(1).getOutput().getText());
-            }
+            log.info("[AgentReply] LLM returned, resultsCount={}",
+                    chatResponse.getResults() != null ? chatResponse.getResults().size() : 0);
+            String reply = extractReply(chatResponse);
+            log.info("[AgentReply] extractedReply length={}, blank={}", reply.length(), reply.isBlank());
 
             // Push final reply to frontend in small chunks for typing effect
             String streamId = UUID.randomUUID().toString();
@@ -203,6 +197,26 @@ public class AgentExecutor {
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                     Map.of("type", "TYPING_END", "roleId", roleId.toHexString()));
         }
+    }
+
+    /**
+     * Extract the reply text from a ChatResponse.
+     * Prefer the second result (index 1) which is the actual reply for reasoning models
+     * (e.g. DeepSeek puts thinking in index 0, reply in index 1).
+     * Falls back to index 0 if only one result exists, then strips think tags.
+     */
+    private String extractReply(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResults() == null
+                || chatResponse.getResults().isEmpty()) {
+            return "";
+        }
+        var results = chatResponse.getResults();
+        // Try index 1 first (reasoning model reply), fall back to index 0
+        var generation = results.size() > 1 ? results.get(1) : results.get(0);
+        if (generation.getOutput() == null || generation.getOutput().getText() == null) {
+            return "";
+        }
+        return stripThinkTags(generation.getOutput().getText());
     }
 
     private String stripThinkTags(String text) {

@@ -15,4 +15,11 @@ public class DmToolContext {
     private String currentPhaseId;
     private PhaseType currentPhaseType;
     private ObjectId triggerRoleId;
+
+    /**
+     * Set to true when a tool (e.g. selectRespondents) delegates speech to AI agents.
+     * DmExecutor checks this flag to suppress DM's own text output.
+     */
+    @Builder.Default
+    private boolean agentDelegated = false;
 }

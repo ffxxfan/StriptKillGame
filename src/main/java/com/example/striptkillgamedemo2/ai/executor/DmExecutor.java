@@ -108,11 +108,15 @@ public class DmExecutor {
             // Blocking call: Spring AI handles the full tool-calling loop internally,
             // so only the final response text is returned — no intermediate reasoning leaks.
             ChatResponse chatResponse = chatModel.call(prompt);
-            String reply = "";
-            if (chatResponse.getResults() != null
-                    && chatResponse.getResults().get(1).getOutput() != null
-                    && chatResponse.getResults().get(1).getOutput().getText() != null) {
-                reply = (chatResponse.getResults().get(1).getOutput().getText());
+            String reply = extractReply(chatResponse);
+
+            // If agents were delegated to speak (e.g. via selectRespondents),
+            // suppress DM's own text — only the agents should appear in chat.
+            if (toolCtx.isAgentDelegated()) {
+                log.info("[DmExecutor] agent delegated, suppressing DM text for room={}", roomId);
+                messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
+                        Map.of("type", "TYPING_END", "roleId", dmRoleIdHex));
+                return;
             }
 
             // Push the final reply to frontend in small chunks to preserve streaming UX
@@ -172,7 +176,19 @@ public class DmExecutor {
         return phases.get(room.getCurrentPhaseIndex());
     }
 
-    /** Strip &lt;think&gt;...&lt;/think&gt; blocks for models that wrap reasoning in tags (e.g. DeepSeek). */
+    private String extractReply(ChatResponse chatResponse) {
+        if (chatResponse == null || chatResponse.getResults() == null
+                || chatResponse.getResults().isEmpty()) {
+            return "";
+        }
+        var results = chatResponse.getResults();
+        var generation = results.size() > 1 ? results.get(1) : results.get(0);
+        if (generation.getOutput() == null || generation.getOutput().getText() == null) {
+            return "";
+        }
+        return stripThinkTags(generation.getOutput().getText());
+    }
+
     private String stripThinkTags(String text) {
         if (text == null) return "";
         return text.replaceAll("(?s)" + THINK_OPEN + ".*?" + THINK_CLOSE, "").trim();

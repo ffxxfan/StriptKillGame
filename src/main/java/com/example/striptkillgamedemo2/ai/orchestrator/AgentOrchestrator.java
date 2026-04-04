@@ -146,7 +146,8 @@ public class AgentOrchestrator {
         // Layer 2: role name in text — find AI roles whose name appears in the message
         List<ObjectId> namedIds = findNamedAiRoles(content, script, room);
         if (!namedIds.isEmpty()) {
-            namedIds.stream().limit(2).forEach(id -> agentExecutor.executeAgentReply(roomId, id));
+            List<ObjectId> limited = namedIds.size() > 2 ? namedIds.subList(0, 2) : namedIds;
+            agentExecutor.executeAgentRepliesSequentially(roomId, limited);
             return;
         }
 
