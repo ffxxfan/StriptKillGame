@@ -201,6 +201,9 @@ public class AgentExecutor {
             for (int s = 0; s < segments.length; s++) {
                 String segment = segments[s].trim();
                 if (segment.isEmpty()) continue;
+                if (isInvalidContent(segment)) {
+                    continue;
+                }
 
                 // Pause between messages for natural feel
                 if (s > 0) {
@@ -249,6 +252,18 @@ public class AgentExecutor {
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                     Map.of("type", "TYPING_END", "roleId", roleId.toHexString()));
         }
+    }
+
+    /**
+     * 过滤无效内容：空、空白、纯标点、纯符号、只有一个顿号等
+     */
+    private boolean isInvalidContent(String text) {
+        if (text == null || text.isBlank()) {
+            return true;
+        }
+        // 正则：只匹配 标点符号、空白、特殊符号，没有任何真实文字
+        String regex = "^[\\p{Punct}\\p{Space}\\p{InCJK_Symbols_and_Punctuation}]*$";
+        return text.matches(regex);
     }
 
     /**
