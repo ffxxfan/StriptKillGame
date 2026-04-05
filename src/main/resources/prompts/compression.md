@@ -13,7 +13,7 @@ ${messages}
 严格输出JSON，不要附加任何其他文字：
 ```json
 {
-  "stageNumber": ${stageNumber},
+  "thisStageNumber": ${stageNumber},
   "keyEvents": [
     {"type": "事件类型", "from": "角色名", "to": "角色名(可选)", "summary": "简述"}
   ],

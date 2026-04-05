@@ -547,4 +547,32 @@
      现象：AI 生成长文本时，玩家需等待完整段落生成后才能看到，响应时间超 5-10 秒。WebSocket 分片推送：在流式响应的 Flux 订阅中，将每一个 content 片段（Chunk）通过 WebSocket 即时推送给前端。Spring AI 的 Flux 和 WebSocket 的 simpMessagingTemplate 配合时，要防止消息乱序。
      ```
    
-     
+
+* 游戏流程完善
+
+  ```
+  /btw dm 工具箱疑似有问题，我希望规范游戏流程：
+  对于整个游戏流程，当前幕结束则更新到下一幕；
+  针对每一幕，都可能包含以下环节| SCRIPT_READING | 阅读剧本阶段，玩家静默阅读，不触发讨论 |，| TURN_BASED | 轮流发言，按 speakOrder 顺序 |，| FREE_CHAT | 自由讨论，可发起投票或选择回复角色 |，| INVESTIGATION | 搜证阶段，玩家请求搜证时你授权 |，投票前的最后发言机会 |，| VOTE | 投票环节 |
+  针对每一幕的流程，一定包含 剧本阅读（SCRIPT_READING），游戏讨论（'TURN_BASED'，'FREE_CHAT'）（游戏讨论环节至少包含一种类型，可选多个）
+  针对每一幕的流程，可能包含INVESTIGATION（如有），VOTE（如有）
+  针对第一幕，在 DM Agent 介绍完游戏后，需要触发 AI Agent 自我介绍（轮流介绍），等待玩家自我介绍结束后，进入正常幕流程 剧本阅读阶段 -> （游戏讨论阶段，其他阶段（可选，INVESTIGATION或 VOTE）），这部分内容可以多次有 DM 选择，在进入每一阶段 DM 都应该给出提示，包括当前阶段的名称和时间；
+  针对最后一幕，首先DM Agent需要介绍游戏即将进入尾声，然后进入正常幕流程，正常流程结束后，进入 TURN_BASED 阶段（此时提醒 AI Agent 这是游戏最后阶段的最终陈述，需要进行简单的复盘以及辩解），结束后进行 VOTE（如有，由 DM 根据剧本决定），然后宣布游戏结束，进行游戏复盘。
+  AI Agent 不能查看仅角色个人可见的聊天信息，注意沙盒隔离；
+  针对各个环节
+  SCRIPT_READING，提醒 AI Agent 和玩家当前阶段和时间，阻止 AI Agent 发言，如有玩家发言 DM Agent 则在聊天室进行提醒；
+  TURN_BASED，提醒 AI Agent 和玩家当前阶段，DM Agent 调用 AI Agent 轮流发言，每个 AI Agent 最多发言一次（即触发一次 response），然后阻止 AI Agent 发言，当所有玩家和 AI Agent 发言结束后，后台阻止 AI_Agent 发言，此时 AI_Agent 无法进行发言，DM Agent 宣布TURN_BASED结束，推进下一阶段；
+  FREE_CHAT，提醒 AI Agent 和玩家当前阶段和时间，DM Agent 随机选择1-2位 AI Agent 进行发言
+  在此阶段，AI Agent 可以触发其他 AI Agent 发言，每次最多触发 1-2 位，AI Agent 触发 AI Agent 发言需要有轮次限定（比如 3 次），AI Agent 在最后一次触发下一位 AI Agent 应该将话题引导向玩家（如：xxx 你觉得呢？）或向 DM （比如希望推进游戏流程）
+  FREE_CHAT 即将结束时（比如一分钟），DM Agent 需要进行提示，如有 AI Agent 正在发言则要求 AI Agent 将话题引向流程推进，且此时是 AI Agent 最后一轮发言；
+  （当 FREE_CHAR 时间到达且在场没有玩家或 AI Agent 发言时（如 30 秒））或（最后一条发言为玩家请求结束 FREE_CHAT 或请求推进流程时），DM Agent 宣布 FREE_CHAT 结束，后台阻止 AI_Agent 发言，此时 AI_Agent 无法进行发言，推进下一阶段；
+   INVESTIGATION 阶段，包含公开（即证据全场可见）和私密（即证据只有指定角色可见）两种模式，由 DM Agent 根据剧本决策，提醒 AI Agent 和玩家当前阶段和时间，可搜证角色。
+  公开模式，搜证搜到的证据所有人可见，DM Agent 轮流在聊天框中询问 AI Agent 和玩家进行搜证，搜证结果直接显示在聊天框；
+  私密模式，搜证搜到的证据仅搜证角色可见，AI Agent 的搜证不显示，直接加入 AI Agent 下一次的 prompt，玩家搜证结果使用不同颜色的气泡框显示，并注明这条消息仅玩家自己可见；
+  搜证结束后DM Agent宣布INVESTIGATION阶段结束，进入下一阶段；
+   VOTE 阶段，提醒 AI Agent 和玩家当前阶段，然后进行TURN_BASED，每个人申辩自己理由（此时提醒 AI Agent 这是游戏投票前的陈述，应该避免自己被投出），然后DM Agent 调用 AI Agent 轮流投票（投票应该不可见），DM Agent 应该提醒玩家进行投票并注明投票信息仅自己可见（如玩家长时间未投票则进行提醒），搜证结果使用不同颜色的气泡框显示玩家投票结果，并注明这条消息仅玩家自己可见。然后 DM Agent 宣布投票结果，如有平票，则让平票角色进行轮流发言，然后再次举行投票，直到投出结果。VOTE 阶段结束后，DM Agent宣布VOTE阶段结束，进入下一阶段；
+  注意，VOTE 阶段被投出的 AI Agent 除了最终幕的最终陈述部分外，不能再进行发言，且其他 AI Agent 不再关注该角色的信息，用户 @被投出的角色 该角色也不能回复，此时由 DM Agent 提醒玩家该 角色 已经被投出；
+  注意，VOTE 阶段如果真人玩家全部被投出局，则结束游戏，进行游戏复盘
+  ```
+
+  
