@@ -5,8 +5,6 @@ public enum PhaseType {
     TURN_BASED(false),
     FREE_CHAT(false),
     INVESTIGATION(false),
-    PRIVATE_TALK(false),
-    FINAL_STATEMENT(false),
     VOTE(true);
 
     private final boolean defaultRequired;

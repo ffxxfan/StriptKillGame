@@ -6,8 +6,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class PhaseTypeTest {
 
     @Test
-    void shouldHaveSevenPhaseTypes() {
-        assertEquals(7, PhaseType.values().length);
+    void shouldHaveFivePhaseTypes() {
+        assertEquals(5, PhaseType.values().length);
     }
 
     @Test
@@ -21,7 +21,5 @@ class PhaseTypeTest {
         assertFalse(PhaseType.TURN_BASED.isDefaultRequired());
         assertFalse(PhaseType.FREE_CHAT.isDefaultRequired());
         assertFalse(PhaseType.INVESTIGATION.isDefaultRequired());
-        assertFalse(PhaseType.PRIVATE_TALK.isDefaultRequired());
-        assertFalse(PhaseType.FINAL_STATEMENT.isDefaultRequired());
     }
 }

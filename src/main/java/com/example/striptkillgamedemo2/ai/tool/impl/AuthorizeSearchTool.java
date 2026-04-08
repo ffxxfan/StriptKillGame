@@ -80,12 +80,16 @@ public class AuthorizeSearchTool implements DmTool {
 
         LiveGameRoom room = ctx.getRoom();
 
-        // 3. Find clues at location that role can search
+        // 3. Find clues at location that role can search (with stage filter)
+        int currentStage = ctx.getRoom().getCurrentStage();
+
         List<Clue> matchingClues = ctx.getScript().getClues() == null
                 ? List.of()
                 : ctx.getScript().getClues().stream()
                         .filter(clue -> clue.getLocationTag() != null && clue.getLocationTag().contains(location))
                         .filter(clue -> clue.getSearchableRoleIds() != null && clue.getSearchableRoleIds().contains(roleId))
+                        .filter(clue -> clue.getStages() == null || clue.getStages().isEmpty()
+                                || clue.getStages().contains(currentStage))
                         .toList();
 
         // 4. Filter out already-found clues
@@ -96,6 +100,9 @@ public class AuthorizeSearchTool implements DmTool {
                         .map(ci -> ci.getClueId().toHexString())
                         .toList();
 
+        String investigationMode = room.getInvestigationMode();
+        boolean isPrivate = "PRIVATE".equals(investigationMode);
+
         List<String> foundTitles = new ArrayList<>();
         for (Clue clue : matchingClues) {
             if (clue.getId() != null && !alreadyFoundClueIds.contains(clue.getId().toHexString())) {
@@ -103,7 +110,7 @@ public class AuthorizeSearchTool implements DmTool {
                         .id(new ObjectId())
                         .clueId(clue.getId())
                         .ownerRoleIds(List.of(new ObjectId(roleId)))
-                        .isPublic(false)
+                        .isPublic(!isPrivate)
                         .isFound(true)
                         .discoveredAt(LocalDateTime.now())
                         .build();
@@ -118,12 +125,33 @@ public class AuthorizeSearchTool implements DmTool {
         // 6. Save room
         liveGameRoomService.save(room);
 
-        // 7. Broadcast CLUE_FOUND signal
+        // 7. Broadcast or privately deliver CLUE_FOUND based on investigation mode
+        boolean isAiSearcher = room.getMembers().stream()
+                .anyMatch(m -> m.isAi() && m.getRoleId() != null
+                        && m.getRoleId().toHexString().equals(roleId));
+
         if (!foundTitles.isEmpty()) {
-            messagingTemplate.convertAndSend(
-                    "/topic/room." + room.getRoomId(),
-                    Map.of("type", "CLUE_FOUND", "roleId", roleId, "clues", foundTitles)
-            );
+            if (!isPrivate) {
+                // PUBLIC mode: broadcast to all
+                messagingTemplate.convertAndSend(
+                        "/topic/room." + room.getRoomId(),
+                        Map.of("type", "CLUE_FOUND", "roleId", roleId, "clues", foundTitles));
+            } else if (!isAiSearcher) {
+                // PRIVATE mode + human searcher: send via private channel
+                String userId = room.getMembers().stream()
+                        .filter(m -> !m.isAi() && m.getRoleId() != null
+                                && m.getRoleId().toHexString().equals(roleId)
+                                && m.getUserId() != null)
+                        .map(m -> m.getUserId().toHexString())
+                        .findFirst().orElse(null);
+                if (userId != null) {
+                    messagingTemplate.convertAndSendToUser(userId,
+                            "/queue/room." + room.getRoomId() + ".private",
+                            Map.of("type", "PRIVATE_CLUE", "clues", foundTitles,
+                                    "label", "仅你可见"));
+                }
+            }
+            // PRIVATE mode + AI searcher: no broadcast, clues already added to clueInstances
         }
 
         log.info("[authorizeSearch] roomId={}, roleId={}, location={}, found={}, remainingPower={}",

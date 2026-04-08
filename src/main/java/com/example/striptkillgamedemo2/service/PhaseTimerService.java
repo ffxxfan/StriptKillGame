@@ -3,6 +3,7 @@ package com.example.striptkillgamedemo2.service;
 import com.example.striptkillgamedemo2.ai.executor.DmExecutor;
 import com.example.striptkillgamedemo2.config.AiEngineProperties;
 import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -95,18 +96,23 @@ public class PhaseTimerService {
             timers.remove(key);
             String timeoutMsg = phaseLabel(phaseType) + "时间已到。";
 
-            // Notify players
             messagingTemplate.convertAndSend("/topic/room." + roomId,
                     Map.of("type", "PHASE_TIMER_EXPIRED",
                             "phaseType", phaseType.name(),
                             "content", timeoutMsg));
 
-            // Notify DM Agent to transition (or close vote)
             if (phaseType == PhaseType.VOTE) {
-                // Vote timeout: close vote and notify DM with results
                 voteService.closeVoteAndNotifyDm(roomId);
+            } else if (phaseType == PhaseType.FREE_CHAT) {
+                // Enter overtime mode — set flag and let idle timer handle transition
+                LiveGameRoom room = liveGameRoomService.get(roomId);
+                if (room != null) {
+                    room.setPhaseOvertime(true);
+                    liveGameRoomService.save(room);
+                }
+                dmExecutor.executeDmAction(roomId, null,
+                        timeoutMsg + "如果还有人在讨论，请等待讨论自然结束。如果30秒内无人发言，系统将自动结束本环节。");
             } else {
-                // Non-vote timeout: tell DM to transition
                 dmExecutor.executeDmAction(roomId, null,
                         timeoutMsg + "请立即使用 transitionPhase 工具（action=NEXT_PHASE）推进到下一个环节。");
             }
@@ -155,8 +161,6 @@ public class PhaseTimerService {
             case TURN_BASED -> properties.getTurnTimeoutSeconds();
             case FREE_CHAT -> properties.getFreeChatTimeoutSeconds();
             case INVESTIGATION -> properties.getInvestigationTimeoutSeconds();
-            case PRIVATE_TALK -> properties.getPrivateTalkTimeoutSeconds();
-            case FINAL_STATEMENT -> properties.getFinalStatementTimeoutSeconds();
             case VOTE -> properties.getVoteTimeoutSeconds();
         };
     }
@@ -167,8 +171,6 @@ public class PhaseTimerService {
             case TURN_BASED -> "轮流发言";
             case FREE_CHAT -> "自由讨论";
             case INVESTIGATION -> "搜证";
-            case PRIVATE_TALK -> "密谈";
-            case FINAL_STATEMENT -> "最终陈述";
             case VOTE -> "投票";
         };
     }

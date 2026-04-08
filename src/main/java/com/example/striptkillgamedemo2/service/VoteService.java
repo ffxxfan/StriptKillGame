@@ -27,17 +27,20 @@ public class VoteService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
     private final DmExecutor dmExecutor;
+    private final GameFlowService gameFlowService;
 
     public VoteService(LiveGameRoomService liveGameRoomService,
                        StringRedisTemplate redisTemplate,
                        SimpMessagingTemplate messagingTemplate,
                        ObjectMapper objectMapper,
-                       @Lazy DmExecutor dmExecutor) {
+                       @Lazy DmExecutor dmExecutor,
+                       @Lazy GameFlowService gameFlowService) {
         this.liveGameRoomService = liveGameRoomService;
         this.redisTemplate = redisTemplate;
         this.messagingTemplate = messagingTemplate;
         this.objectMapper = objectMapper;
         this.dmExecutor = dmExecutor;
+        this.gameFlowService = gameFlowService;
     }
 
     private static final String VOTES_KEY_PREFIX = "game:";
@@ -86,6 +89,21 @@ public class VoteService {
                         "votedCount", votedCount,
                         "total", totalMembers));
 
+        // Send private vote confirmation to human player
+        String voterId = voterRoleId.toHexString();
+        String userId = room.getMembers().stream()
+                .filter(m -> !m.isAi() && m.getRoleId() != null
+                        && m.getRoleId().toHexString().equals(voterId)
+                        && m.getUserId() != null)
+                .map(m -> m.getUserId().toHexString())
+                .findFirst().orElse(null);
+        if (userId != null) {
+            messagingTemplate.convertAndSendToUser(userId,
+                    "/queue/room." + roomId + ".private",
+                    Map.of("type", "PRIVATE_VOTE", "choice", choice,
+                            "label", "仅你可见"));
+        }
+
         boolean allVoted = votedCount >= totalMembers;
         if (allVoted) {
             closeVoteAndNotifyDm(roomId);
@@ -103,6 +121,7 @@ public class VoteService {
         String voteId = room.getActiveVote().getVoteId();
 
         room.setActiveVote(null);
+        room.setVoteSubPhase("RESULT");
         liveGameRoomService.save(room);
 
         messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
@@ -120,10 +139,48 @@ public class VoteService {
                 .map(e -> e.getKey() + " → " + e.getValue())
                 .collect(Collectors.joining(", "));
 
+        // Check for tie
+        Map<String, Long> voteCounts = results.values().stream()
+                .collect(Collectors.groupingBy(v -> v, Collectors.counting()));
+        long maxVotes = voteCounts.values().stream().mapToLong(Long::longValue).max().orElse(0);
+        List<String> topChoices = voteCounts.entrySet().stream()
+                .filter(e -> e.getValue() == maxVotes)
+                .map(Map.Entry::getKey)
+                .toList();
+
+        String tieInfo = "";
+        if (topChoices.size() > 1) {
+            tieInfo = " 注意：出现平票（" + String.join("、", topChoices) + " 各 " + maxVotes + " 票）。" +
+                    "请让平票角色轮流发言，然后再次发起投票。最多重投2次，超过后请强制裁定AI的票。";
+        }
+
         dmExecutor.executeDmAction(roomId, null,
-                "投票已结束，结果如下：" + resultSummary +
-                "。请宣布投票结果，然后使用 transitionPhase 工具推进流程。");
+                "投票已结束，结果如下：" + resultSummary + "。" + tieInfo +
+                "请宣布投票结果，然后使用 transitionPhase 工具推进流程。");
 
         log.info("[VoteService] vote closed and DM notified, room={}, results={}", roomId, results);
+    }
+
+    /**
+     * Mark a role as eliminated. If all humans are eliminated, end the game.
+     */
+    public void eliminateRole(String roomId, String roleIdHex) {
+        LiveGameRoom room = liveGameRoomService.get(roomId);
+        if (room == null) return;
+
+        room.getEliminatedRoleIds().add(roleIdHex);
+        liveGameRoomService.save(room);
+
+        log.info("[VoteService] role {} eliminated in room {}", roleIdHex, roomId);
+
+        // Check if all human players are eliminated
+        boolean allHumansEliminated = room.getMembers().stream()
+                .filter(m -> !m.isAi() && !m.isDm() && m.getRoleId() != null)
+                .allMatch(m -> room.getEliminatedRoleIds().contains(m.getRoleId().toHexString()));
+
+        if (allHumansEliminated) {
+            log.info("[VoteService] all humans eliminated in room {}, ending game", roomId);
+            gameFlowService.endGame(roomId);
+        }
     }
 }

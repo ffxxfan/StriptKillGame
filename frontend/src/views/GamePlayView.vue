@@ -34,14 +34,16 @@
           </el-avatar>
           <div class="msg-body">
             <div class="msg-name">{{ msg.senderRoleName }}</div>
-            <div class="msg-bubble left markdown-body" v-html="renderMarkdown(msg.content)"></div>
+            <div :class="['msg-bubble', 'left', msg.isPrivate ? 'msg-bubble-private' : '', 'markdown-body']" v-html="renderMarkdown(msg.content)"></div>
+            <span v-if="msg.isPrivate" class="private-label">{{ msg.privateLabel }}</span>
           </div>
         </template>
         <!-- Right: self -->
         <template v-else>
           <div class="msg-body">
             <div class="msg-name self">{{ msg.senderRoleName }}</div>
-            <div class="msg-bubble right markdown-body" v-html="renderMarkdown(msg.content)"></div>
+            <div :class="['msg-bubble', 'right', msg.isPrivate ? 'msg-bubble-private' : '', 'markdown-body']" v-html="renderMarkdown(msg.content)"></div>
+            <span v-if="msg.isPrivate" class="private-label" style="text-align: right;">{{ msg.privateLabel }}</span>
           </div>
           <el-avatar :size="36" :src="msg.senderAvatar" class="msg-avatar">
             {{ msg.senderRoleName?.charAt(0) }}
@@ -106,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Document } from '@element-plus/icons-vue'
 import { getRoom, leaveRoom } from '../api/room'
@@ -187,6 +189,34 @@ onMounted(async () => {
         gameStore.appendStreamChunk(chunk.streamId, chunk.roleId, chunk.roleName, chunk.chunk, chunk.seq)
       } else if (chunk.type === 'STREAM_END') {
         gameStore.finalizeStream(chunk.streamId)
+      }
+      nextTick(() => scrollToBottom())
+    },
+    onPrivateMessage: (data: any) => {
+      if (data.type === 'PRIVATE_CLUE') {
+        gameStore.addPrivateMessage({
+          messageId: 'private-' + Date.now(),
+          senderRoleId: 'system',
+          senderRoleName: '系统',
+          senderAvatar: '',
+          isAi: false,
+          content: '搜证结果：' + (data.clues || []).join('、'),
+          timestamp: new Date().toISOString(),
+          isPrivate: true,
+          privateLabel: data.label || '仅你可见'
+        })
+      } else if (data.type === 'PRIVATE_VOTE') {
+        gameStore.addPrivateMessage({
+          messageId: 'private-vote-' + Date.now(),
+          senderRoleId: 'system',
+          senderRoleName: '系统',
+          senderAvatar: '',
+          isAi: false,
+          content: '你的投票：' + data.choice,
+          timestamp: new Date().toISOString(),
+          isPrivate: true,
+          privateLabel: data.label || '仅你可见'
+        })
       }
       nextTick(() => scrollToBottom())
     }
@@ -389,6 +419,19 @@ async function handleLeave() {
   padding-left: 8px;
   border-left: 3px solid rgba(255, 255, 255, 0.3);
   opacity: 0.85;
+}
+
+.msg-bubble-private {
+  background: linear-gradient(135deg, #2d1b4e 0%, #1a1040 100%) !important;
+  border: 1px solid #6c5ce7 !important;
+  position: relative;
+}
+
+.private-label {
+  font-size: 11px;
+  color: #6c5ce7;
+  margin-top: 2px;
+  display: block;
 }
 
 .system-message {

@@ -8,6 +8,7 @@ import com.example.striptkillgamedemo2.entity.mongo.ScriptStage;
 import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
+import com.example.striptkillgamedemo2.service.PhaseRuleEnforcer;
 import com.example.striptkillgamedemo2.service.PhaseTimerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +38,7 @@ class TransitionPhaseToolTest {
         memoryManager = mock(MemoryManager.class);
         objectMapper = new ObjectMapper();
         tool = new TransitionPhaseTool(liveGameRoomService, messagingTemplate,
-                phaseTimerService, memoryManager, objectMapper);
+                phaseTimerService, new PhaseRuleEnforcer(), memoryManager, objectMapper);
     }
 
     @Test

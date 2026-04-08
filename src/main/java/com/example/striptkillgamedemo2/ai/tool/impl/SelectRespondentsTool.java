@@ -93,7 +93,14 @@ public class SelectRespondentsTool implements DmTool {
                     || trimmed.contains(role.getName())) {
                 boolean isAi = room.getMembers().stream()
                         .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
-                if (isAi) return role.getId();
+                if (isAi) {
+                    // Skip eliminated roles
+                    if (room.getEliminatedRoleIds().contains(role.getId().toHexString())) {
+                        log.info("[selectRespondents] skipping eliminated role '{}'", name);
+                        return null;
+                    }
+                    return role.getId();
+                }
             }
         }
         log.warn("[selectRespondents] could not resolve role name '{}', available roles: {}",

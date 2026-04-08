@@ -41,10 +41,17 @@ public class PromptBuilder {
         vars.put("phaseType", currentPhase != null ? currentPhase.getType().name() : "FREE_CHAT");
         vars.put("phaseInstruction", currentPhase != null && currentPhase.getDmInstruction() != null
                 ? currentPhase.getDmInstruction() : "");
-        vars.put("roleList", buildRoleList(script.getRoles()));
+        vars.put("roleList", buildRoleList(script.getRoles(), room));
         vars.put("searchPowerTable", buildSearchPowerTable(script.getRoles()));
         vars.put("fullScriptTruth", buildFullScriptTruth(script));
         vars.put("memoryFragments", String.join("\n", memoryFragments));
+
+        int totalStages = script.getStages() != null ? script.getStages().size() : 1;
+        boolean isFirstStage = room.getCurrentStage() == 0;
+        boolean isLastStage = room.getCurrentStage() >= totalStages - 1;
+        vars.put("isFirstStage", String.valueOf(isFirstStage));
+        vars.put("isLastStage", String.valueOf(isLastStage));
+        vars.put("totalStages", String.valueOf(totalStages));
 
         String prompt = replaceVars(template, vars);
 
@@ -89,13 +96,17 @@ public class PromptBuilder {
         vars.put("rolePrompt", targetRole.getPrompt() != null ? targetRole.getPrompt() : "");
         vars.put("roleSecret", targetRole.getSecret() != null ? targetRole.getSecret() : "无特殊秘密");
         vars.put("discoveredClues", formatClues(visibleClues, script.getClues()));
-        vars.put("otherRoles", buildOtherRoles(script.getRoles(), targetRole.getId()));
+        vars.put("otherRoles", buildOtherRoles(script.getRoles(), targetRole.getId(), room));
         vars.put("currentStage", String.valueOf(room.getCurrentStage() + 1));
         vars.put("stageTitle", currentStage != null ? currentStage.getStageTitle() : "未知");
         vars.put("phaseType", currentPhase != null ? currentPhase.getType().name() : "FREE_CHAT");
         vars.put("phaseInstruction", currentPhase != null && currentPhase.getDmInstruction() != null
                 ? currentPhase.getDmInstruction() : "");
         vars.put("memoryFragments", String.join("\n", memoryFragments));
+
+        int totalStages = script.getStages() != null ? script.getStages().size() : 1;
+        boolean isLastStage = room.getCurrentStage() >= totalStages - 1;
+        vars.put("isLastStage", String.valueOf(isLastStage));
 
         String prompt = replaceVars(template, vars);
 
@@ -162,9 +173,17 @@ public class PromptBuilder {
         return result;
     }
 
-    private String buildRoleList(List<Role> roles) {
+    private String buildRoleList(List<Role> roles, LiveGameRoom room) {
         return roles.stream()
-                .map(r -> "- " + r.getName() + (r.isNpc() ? " (NPC)" : ""))
+                .map(r -> {
+                    String label = "- " + r.getName() + (r.isNpc() ? " (NPC)" : "");
+                    if (room != null && room.getEliminatedRoleIds() != null
+                            && r.getId() != null
+                            && room.getEliminatedRoleIds().contains(r.getId().toHexString())) {
+                        label += " (已出局)";
+                    }
+                    return label;
+                })
                 .collect(Collectors.joining("\n"));
     }
 
@@ -193,10 +212,18 @@ public class PromptBuilder {
         return sb.toString();
     }
 
-    private String buildOtherRoles(List<Role> roles, ObjectId excludeRoleId) {
+    private String buildOtherRoles(List<Role> roles, ObjectId excludeRoleId, LiveGameRoom room) {
         return roles.stream()
                 .filter(r -> !Objects.equals(r.getId(), excludeRoleId))
-                .map(r -> "- " + r.getName() + (r.isNpc() ? " (NPC)" : ""))
+                .map(r -> {
+                    String label = "- " + r.getName() + (r.isNpc() ? " (NPC)" : "");
+                    if (room != null && room.getEliminatedRoleIds() != null
+                            && r.getId() != null
+                            && room.getEliminatedRoleIds().contains(r.getId().toHexString())) {
+                        label += " (已出局)";
+                    }
+                    return label;
+                })
                 .collect(Collectors.joining("\n"));
     }
 

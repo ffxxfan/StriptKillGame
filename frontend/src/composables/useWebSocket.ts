@@ -9,6 +9,7 @@ export interface WebSocketCallbacks {
   onMessage: (msg: any) => void
   onStageUpdate?: (signal: { currentStage: number; stageTitle: string }) => void
   onStreamChunk?: (chunk: any) => void
+  onPrivateMessage?: (data: any) => void
 }
 
 export function useWebSocket() {
@@ -50,6 +51,14 @@ export function useWebSocket() {
           stompClient!.subscribe(`/topic/room.${roomId}.stream`, (frame) => {
             const body = JSON.parse(frame.body)
             cbs.onStreamChunk!(body)
+          })
+        }
+
+        // Private channel (clues, vote confirmations)
+        if (cbs.onPrivateMessage) {
+          stompClient!.subscribe(`/user/queue/room.${roomId}.private`, (frame) => {
+            const body = JSON.parse(frame.body)
+            cbs.onPrivateMessage!(body)
           })
         }
       },

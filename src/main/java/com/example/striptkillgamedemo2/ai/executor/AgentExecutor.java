@@ -87,6 +87,11 @@ public class AgentExecutor {
             LiveGameRoom room = liveGameRoomService.get(roomId);
             if (room == null || room.getActiveVote() == null) return;
 
+            if (room.getEliminatedRoleIds() != null && room.getEliminatedRoleIds().contains(roleId.toHexString())) {
+                log.info("[AgentVote] skipping eliminated role={}, room={}", roleId, roomId);
+                return;
+            }
+
             Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
             Role targetRole = script.getRoles().stream()
                     .filter(r -> Objects.equals(r.getId(), roleId))
@@ -139,6 +144,13 @@ public class AgentExecutor {
             LiveGameRoom room = liveGameRoomService.get(roomId);
             if (room == null) return;
 
+            // Skip eliminated agents
+            String roleIdHex = roleId.toHexString();
+            if (room.getEliminatedRoleIds() != null && room.getEliminatedRoleIds().contains(roleIdHex)) {
+                log.info("[AgentReply] skipping eliminated role={}, room={}", roleIdHex, roomId);
+                return;
+            }
+
             Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
             Role targetRole = script.getRoles().stream()
                     .filter(r -> Objects.equals(r.getId(), roleId))
@@ -149,8 +161,6 @@ public class AgentExecutor {
                 log.warn("Role {} not found in script for room {}", roleId, roomId);
                 return;
             }
-
-            String roleIdHex = roleId.toHexString();
 
             // Broadcast typing indicator
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",

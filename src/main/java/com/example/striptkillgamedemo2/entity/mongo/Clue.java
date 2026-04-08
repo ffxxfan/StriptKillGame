@@ -43,4 +43,6 @@ public class Clue {
     private boolean isInitialHidden = true; // 是否初始隐藏
     private List<String> searchableRoleIds; // 哪些角色可以搜到这个线索
     private List<String> locationTag;             // 所在地点
+    private List<Integer> stages; // Stages where this clue can be discovered; null/empty = any stage
+    private String visibility;    // "PUBLIC" | "PRIVATE"; null defaults to PUBLIC
 }

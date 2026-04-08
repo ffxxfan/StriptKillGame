@@ -10,7 +10,9 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Runtime game room state stored in Redis.
@@ -48,4 +50,16 @@ public class LiveGameRoom {
     private int currentPhaseIndex;
     private String currentSpeakerRoleId;
     private VoteSession activeVote;
+
+    @Builder.Default
+    private Set<String> spokenRoleIds = new HashSet<>();
+
+    @Builder.Default
+    private Set<String> eliminatedRoleIds = new HashSet<>();
+
+    private boolean phaseOvertime;
+
+    private String investigationMode; // "PUBLIC" | "PRIVATE"
+
+    private String voteSubPhase; // "STATEMENT" | "VOTING" | "RESULT"
 }

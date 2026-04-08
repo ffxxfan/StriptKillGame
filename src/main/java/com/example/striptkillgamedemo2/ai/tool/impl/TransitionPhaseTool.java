@@ -9,6 +9,7 @@ import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.GameMessage;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
+import com.example.striptkillgamedemo2.service.PhaseRuleEnforcer;
 import com.example.striptkillgamedemo2.service.PhaseTimerService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
@@ -42,6 +43,7 @@ public class TransitionPhaseTool implements DmTool {
     private final LiveGameRoomService liveGameRoomService;
     private final SimpMessagingTemplate messagingTemplate;
     private final PhaseTimerService phaseTimerService;
+    private final PhaseRuleEnforcer phaseRuleEnforcer;
     private final MemoryManager memoryManager;
     private final ObjectMapper objectMapper;
 
@@ -106,6 +108,9 @@ public class TransitionPhaseTool implements DmTool {
         // Cancel any active timer for the ending phase
         phaseTimerService.cancelTimer(room.getRoomId(), ctx.getCurrentPhaseType());
 
+        // Clear phase-scoped state from previous phase
+        phaseRuleEnforcer.resetPhaseState(room);
+
         if (totalPhases > 0 && nextPhaseIndex >= totalPhases) {
             // All phases in this stage are done — signal stage complete
             room.setCurrentPhaseIndex(nextPhaseIndex);
@@ -125,11 +130,17 @@ public class TransitionPhaseTool implements DmTool {
         // Advance to next phase
         room.setCurrentPhaseIndex(nextPhaseIndex);
         room.setCurrentSpeakerRoleId(null);
-        liveGameRoomService.save(room);
 
-        // Determine next phase info for broadcast and timer
+        // Determine next phase info
         StagePhase nextPhase = stages.get(currentStage).getPhases().get(nextPhaseIndex);
         PhaseType nextType = nextPhase.getType();
+
+        // Initialize phase-specific state
+        if (nextType == PhaseType.VOTE) {
+            room.setVoteSubPhase("STATEMENT");
+        }
+
+        liveGameRoomService.save(room);
 
         Map<String, Object> signal = new LinkedHashMap<>();
         signal.put("type", "PHASE_ADVANCE");
@@ -205,6 +216,7 @@ public class TransitionPhaseTool implements DmTool {
         room.setCurrentStage(nextStage);
         room.setCurrentPhaseIndex(0);
         room.setCurrentSpeakerRoleId(null);
+        phaseRuleEnforcer.resetPhaseState(room);
         liveGameRoomService.save(room);
 
         ScriptStage newStage = stages.get(nextStage);

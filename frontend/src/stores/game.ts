@@ -9,6 +9,8 @@ export interface ChatMessage {
   isAi: boolean
   content: string
   timestamp: string
+  isPrivate?: boolean   // true for private messages (clues, votes)
+  privateLabel?: string // e.g., "仅你可见"
 }
 
 // Track in-flight streaming messages by streamId
@@ -40,6 +42,12 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function addMessage(msg: ChatMessage) {
+    messages.value.push(msg)
+  }
+
+  function addPrivateMessage(msg: ChatMessage) {
+    msg.isPrivate = true
+    msg.privateLabel = msg.privateLabel || '仅你可见'
     messages.value.push(msg)
   }
 
@@ -102,7 +110,7 @@ export const useGameStore = defineStore('game', () => {
 
   return {
     roomId, scriptId, myRoleId, messages, gameStatus,
-    setRoom, setScript, setMyRole, addMessage,
+    setRoom, setScript, setMyRole, addMessage, addPrivateMessage,
     appendStreamChunk, finalizeStream,
     setGameStatus, clearGame
   }

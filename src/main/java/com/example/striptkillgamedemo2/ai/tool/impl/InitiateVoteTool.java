@@ -54,7 +54,7 @@ public class InitiateVoteTool implements DmTool {
 
     @Override
     public Set<PhaseType> allowedPhases() {
-        return Set.of(PhaseType.FREE_CHAT);
+        return Set.of(PhaseType.FREE_CHAT, PhaseType.VOTE);
     }
 
     @Override
@@ -90,6 +90,7 @@ public class InitiateVoteTool implements DmTool {
                 .build();
 
         room.setActiveVote(vote);
+        room.setVoteSubPhase("VOTING");
         liveGameRoomService.save(room);
 
         messagingTemplate.convertAndSend(
@@ -104,6 +105,7 @@ public class InitiateVoteTool implements DmTool {
         // Trigger AI agents to vote asynchronously
         List<ObjectId> aiRoleIds = room.getMembers().stream()
                 .filter(m -> m.isAi() && !m.isDm() && m.getRoleId() != null)
+                .filter(m -> !room.getEliminatedRoleIds().contains(m.getRoleId().toHexString()))
                 .map(Member::getRoleId)
                 .toList();
         for (ObjectId aiRoleId : aiRoleIds) {

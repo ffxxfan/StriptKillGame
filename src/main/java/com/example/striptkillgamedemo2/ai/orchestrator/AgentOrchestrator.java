@@ -12,6 +12,7 @@ import com.example.striptkillgamedemo2.entity.mongo.ScriptStage;
 import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
+import com.example.striptkillgamedemo2.service.PhaseRuleEnforcer;
 import com.example.striptkillgamedemo2.service.ScriptCacheService;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class AgentOrchestrator {
     private final LiveGameRoomService liveGameRoomService;
     private final ScriptCacheService scriptCacheService;
     private final AiEngineProperties aiProperties;
+    private final PhaseRuleEnforcer phaseRuleEnforcer;
 
     private static final Pattern MENTION_PATTERN = Pattern.compile("@(\\S+)");
 
@@ -60,6 +62,23 @@ public class AgentOrchestrator {
 
         // Reset idle timer on any message (human, AI, or DM)
         PhaseType currentPhase = getCurrentPhaseType(script, room);
+
+        // Phase rule enforcement — check before any routing
+        String senderRoleIdHex = event.getSenderRoleId() != null ? event.getSenderRoleId().toHexString() : null;
+        if (senderRoleIdHex != null) {
+            PhaseRuleEnforcer.SpeakCheck check = phaseRuleEnforcer.checkCanSpeak(
+                    room, currentPhase, senderRoleIdHex, fromAi);
+            if (check == PhaseRuleEnforcer.SpeakCheck.BLOCKED_SILENT) {
+                log.info("[PhaseRule] silently blocked, room={}, role={}, phase={}", roomId, senderRoleIdHex, currentPhase);
+                return;
+            }
+            if (check == PhaseRuleEnforcer.SpeakCheck.BLOCKED_DM_REMIND) {
+                String remindMsg = buildRemindMessage(currentPhase, senderRoleIdHex, room);
+                dmExecutor.executeDmAction(roomId, event.getSenderRoleId(), remindMsg);
+                return;
+            }
+        }
+
         if (currentPhase == PhaseType.FREE_CHAT) {
             resetIdleTimer(roomId, room, script);
         }
@@ -88,23 +107,33 @@ public class AgentOrchestrator {
             return;
         }
 
+        // Mark AI as spoken in TURN_BASED
+        if (fromAi && currentPhase == PhaseType.TURN_BASED && senderRoleIdHex != null) {
+            phaseRuleEnforcer.markSpoken(room, senderRoleIdHex);
+            liveGameRoomService.save(room);
+        }
+
+        // Mark AI as spoken in VOTE STATEMENT sub-phase
+        if (fromAi && currentPhase == PhaseType.VOTE
+                && "STATEMENT".equals(room.getVoteSubPhase()) && senderRoleIdHex != null) {
+            phaseRuleEnforcer.markSpoken(room, senderRoleIdHex);
+            liveGameRoomService.save(room);
+        }
+
         switch (currentPhase) {
-            case TURN_BASED, FINAL_STATEMENT -> {
+            case TURN_BASED -> {
                 if (!fromAi) handleTurnBased(roomId, room, script, event);
             }
             case FREE_CHAT -> handleFreeChat(roomId, room, script, content,
                     event.getSenderRoleId(), fromAi);
             case INVESTIGATION -> {
-                if (!fromAi && isDmRequest(content)) {
+                if (isDmRequest(content)) {
                     dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
-                            "玩家消息：" + content);
+                            (fromAi ? "AI角色搜证请求：" : "玩家消息：") + content);
                 }
+                // No AI-to-AI chain in INVESTIGATION
             }
             case SCRIPT_READING -> { }
-            case PRIVATE_TALK -> {
-                handleFreeChat(roomId, room, script, content,
-                        event.getSenderRoleId(), fromAi);
-            }
             case VOTE -> { }
         }
     }
@@ -167,6 +196,11 @@ public class AgentOrchestrator {
                     boolean isAi = room.getMembers().stream()
                             .anyMatch(m -> m.isAi() && Objects.equals(m.getRoleId(), role.getId()));
                     if (isAi) {
+                        if (phaseRuleEnforcer.isTargetingEliminatedAi(room, role.getId().toHexString())) {
+                            dmExecutor.executeDmAction(roomId, senderRoleId,
+                                    "玩家 @了已出局的角色「" + mentionedName + "」，请提醒该角色已被投出。");
+                            return;
+                        }
                         boolean lastRound = counter.get() + 1 >= effectiveMax;
                         agentExecutor.executeAgentReply(roomId, role.getId(), lastRound);
                         return;
@@ -213,6 +247,16 @@ public class AgentOrchestrator {
         return matched;
     }
 
+    private String buildRemindMessage(PhaseType phase, String roleIdHex, LiveGameRoom room) {
+        if (room.getEliminatedRoleIds().contains(roleIdHex)) {
+            return "提醒：该玩家已被投出局，其发言不影响游戏流程。请温和提醒。";
+        }
+        return switch (phase) {
+            case SCRIPT_READING -> "有玩家在阅读剧本阶段发言了，请提醒他们保持安静阅读。";
+            default -> "当前环节不允许该操作，请提醒玩家。";
+        };
+    }
+
     boolean isDmRequest(String content) {
         if (content.contains("@DM") || content.contains("@主持人")) return true;
         if (content.contains("搜证") || content.contains("搜索") || content.contains("调查")) return true;
@@ -233,20 +277,33 @@ public class AgentOrchestrator {
     public void resetIdleTimer(String roomId, LiveGameRoom room, Script script) {
         cancelIdleTimer(roomId);
 
-        int timeout = aiProperties.getIdleTimeoutSeconds();
+        // In overtime mode, use 30s silence detection that auto-transitions
+        int timeout;
+        boolean isOvertime = room.isPhaseOvertime();
+        if (isOvertime) {
+            timeout = 30;
+        } else {
+            timeout = aiProperties.getIdleTimeoutSeconds();
+        }
         if (timeout <= 0) return;
 
         ScheduledFuture<?> future = idleScheduler.schedule(() -> {
-            // Re-check phase at fire time
             LiveGameRoom currentRoom = liveGameRoomService.get(roomId);
             if (currentRoom == null) return;
             Script currentScript = scriptCacheService.getScript(new ObjectId(currentRoom.getScriptId()));
             PhaseType phase = getCurrentPhaseType(currentScript, currentRoom);
             if (phase != PhaseType.FREE_CHAT) return;
 
-            log.info("[IdleTimer] fired for room={}, triggering DM", roomId);
-            dmExecutor.executeDmAction(roomId, null,
-                    "自由讨论中所有参与者已沉默超过一分钟。请主动推进游戏进程：可以发起新话题、总结讨论要点、或使用 transitionPhase 工具推进到下一环节。");
+            if (currentRoom.isPhaseOvertime()) {
+                // Overtime + silence → auto-transition
+                log.info("[IdleTimer] overtime silence detected, auto-ending FREE_CHAT for room={}", roomId);
+                dmExecutor.executeDmAction(roomId, null,
+                        "自由讨论已超时且30秒内无人发言，请立即使用 transitionPhase 工具（action=NEXT_PHASE）结束本环节。");
+            } else {
+                log.info("[IdleTimer] fired for room={}, triggering DM", roomId);
+                dmExecutor.executeDmAction(roomId, null,
+                        "自由讨论中所有参与者已沉默超过一分钟。请主动推进游戏进程：可以发起新话题、总结讨论要点、或使用 transitionPhase 工具推进到下一环节。");
+            }
         }, timeout, TimeUnit.SECONDS);
 
         idleTimers.put(roomId, future);

@@ -8,6 +8,7 @@ import com.example.striptkillgamedemo2.entity.mongo.Role;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
 import com.example.striptkillgamedemo2.entity.redis.LiveGameRoom;
 import com.example.striptkillgamedemo2.service.LiveGameRoomService;
+import com.example.striptkillgamedemo2.service.PhaseRuleEnforcer;
 import com.example.striptkillgamedemo2.service.ScriptCacheService;
 import org.bson.types.ObjectId;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +35,8 @@ class AgentOrchestratorTest {
                 Mockito.mock(DmExecutor.class),
                 Mockito.mock(LiveGameRoomService.class),
                 Mockito.mock(ScriptCacheService.class),
-                props
+                props,
+                new PhaseRuleEnforcer()
         );
     }
 
