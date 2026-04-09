@@ -57,12 +57,20 @@ public class WebSocketAuthInterceptor implements ChannelInterceptor {
             }
 
             // 验证成功，设置认证信息
+            // Override getName() to return userId (claims.getSubject()) so that
+            // convertAndSendToUser(userId, ...) can match this STOMP session.
+            String userId = claims.getSubject();
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             claims,
                             null,
                             Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER"))
-                    );
+                    ) {
+                        @Override
+                        public String getName() {
+                            return userId;
+                        }
+                    };
             accessor.setUser(authentication);
             log.info("WebSocket CONNECT 鉴权成功, userId={}", claims.getSubject());
         }

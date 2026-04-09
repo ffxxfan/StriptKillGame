@@ -5,6 +5,8 @@ import com.example.striptkillgamedemo2.ai.prompt.PromptBuilder;
 import com.example.striptkillgamedemo2.ai.tool.DmToolContext;
 import com.example.striptkillgamedemo2.ai.tool.DmToolRegistry;
 import com.example.striptkillgamedemo2.entity.enums.PhaseType;
+import com.example.striptkillgamedemo2.entity.mongo.Member;
+import com.example.striptkillgamedemo2.entity.mongo.Role;
 import com.example.striptkillgamedemo2.entity.mongo.Script;
 import com.example.striptkillgamedemo2.entity.mongo.StagePhase;
 import com.example.striptkillgamedemo2.entity.redis.GameMessage;
@@ -160,20 +162,19 @@ public class DmExecutor {
                     && toolCtx.getPendingRoundRobinRoleIds() != null
                     && !toolCtx.getPendingRoundRobinRoleIds().isEmpty()) {
                 String instruction = toolCtx.getPendingRoundRobinInstruction();
-                List<ObjectId> roleIds = toolCtx.getPendingRoundRobinRoleIds();
+                List<ObjectId> pendingRoleIds = toolCtx.getPendingRoundRobinRoleIds();
                 log.info("[DmExecutor] executing deferred round-robin: {} agents, instruction='{}'",
-                        roleIds.size(), instruction);
+                        pendingRoleIds.size(), instruction);
 
-                for (ObjectId roleId : roleIds) {
-                    agentExecutor.executeAgentReplySync(roomId, roleId, instruction);
+                for (ObjectId rid : pendingRoleIds) {
+                    agentExecutor.executeAgentReplySync(roomId, rid, instruction);
                 }
 
                 log.info("[DmExecutor] deferred round-robin completed for room={}", roomId);
 
-                // Trigger DM callback to continue the flow
-                executeDmAction(roomId, null,
-                        "所有AI角色已完成「" + instruction + "」。请继续推进流程。" +
-                        "如需等待真人玩家发言请提醒他们，否则请使用 transitionPhase 推进到下一环节。");
+                // Check which human players have already spoken (self-introduced)
+                String callbackMsg = buildRoundRobinCallback(roomId, room, script, instruction);
+                executeDmAction(roomId, null, callbackMsg);
             }
 
         } catch (Exception e) {
@@ -228,5 +229,63 @@ public class DmExecutor {
                 })
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    /**
+     * After AI round-robin completes, check if human players have already spoken.
+     * Returns a DM callback message that either tells DM to proceed or lists who still needs to speak.
+     */
+    private String buildRoundRobinCallback(String roomId, LiveGameRoom room, Script script, String instruction) {
+        // Identify human player roleIds
+        Set<String> humanRoleIds = new HashSet<>();
+        for (Member m : room.getMembers()) {
+            if (!m.isAi() && !m.isDm() && m.getRoleId() != null) {
+                humanRoleIds.add(m.getRoleId().toHexString());
+            }
+        }
+
+        if (humanRoleIds.isEmpty()) {
+            // All-AI game, proceed directly
+            return "所有AI角色已完成「" + instruction + "」，本局没有真人玩家。" +
+                    "请使用 transitionPhase（NEXT_PHASE）进入下一环节。";
+        }
+
+        // Check chat history for human player messages
+        List<GameMessage> allMessages = deserializeMessages(
+                liveGameRoomService.getMessages(new ObjectId(roomId)));
+        Set<String> spokenHumanRoleIds = new HashSet<>();
+        for (GameMessage msg : allMessages) {
+            if (!msg.isAi() && msg.getSenderRoleId() != null
+                    && humanRoleIds.contains(msg.getSenderRoleId().toHexString())) {
+                spokenHumanRoleIds.add(msg.getSenderRoleId().toHexString());
+            }
+        }
+
+        Set<String> notSpoken = new HashSet<>(humanRoleIds);
+        notSpoken.removeAll(spokenHumanRoleIds);
+
+        if (notSpoken.isEmpty()) {
+            // All human players have already spoken
+            room.getAwaitingIntroRoleIds().clear();
+            liveGameRoomService.save(room);
+            return "所有AI角色已完成「" + instruction + "」，所有真人玩家也已经发言完毕。" +
+                    "请使用 transitionPhase（NEXT_PHASE）进入下一环节。";
+        }
+
+        // Track who still needs to introduce — AgentOrchestrator will notify DM when all done
+        room.setAwaitingIntroRoleIds(notSpoken);
+        liveGameRoomService.save(room);
+
+        // Find names of players who haven't spoken
+        List<String> names = new ArrayList<>();
+        for (Role role : script.getRoles()) {
+            if (role.getId() != null && notSpoken.contains(role.getId().toHexString())) {
+                names.add(role.getName());
+            }
+        }
+
+        return "所有AI角色已完成「" + instruction + "」。" +
+                "以下真人玩家尚未自我介绍：" + String.join("、", names) + "。" +
+                "请提醒他们进行自我介绍。当所有玩家发言完毕后系统会自动通知你推进流程。";
     }
 }

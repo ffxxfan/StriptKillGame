@@ -88,6 +88,19 @@ public class AgentOrchestrator {
             aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0)).set(0);
         }
 
+        // Track self-introduction completion for human players
+        if (!fromAi && senderRoleIdHex != null
+                && room.getAwaitingIntroRoleIds() != null
+                && room.getAwaitingIntroRoleIds().remove(senderRoleIdHex)) {
+            liveGameRoomService.save(room);
+            if (room.getAwaitingIntroRoleIds().isEmpty()) {
+                log.info("[Intro] all human players have introduced in room={}", roomId);
+                dmExecutor.executeDmAction(roomId, null,
+                        "所有真人玩家已完成自我介绍。请使用 transitionPhase（NEXT_PHASE）进入下一环节。");
+                return;
+            }
+        }
+
         // AI message: increment round counter, drop if over limit
         if (fromAi) {
             AtomicInteger counter = aiRoundCounters.computeIfAbsent(roomId, k -> new AtomicInteger(0));
@@ -128,8 +141,12 @@ public class AgentOrchestrator {
                     event.getSenderRoleId(), fromAi);
             case INVESTIGATION -> {
                 if (isDmRequest(content)) {
+                    String senderInfo = buildSenderInfo(event.getSenderRoleId(), script, fromAi);
                     dmExecutor.executeDmAction(roomId, event.getSenderRoleId(),
-                            (fromAi ? "AI角色搜证请求：" : "玩家消息：") + content);
+                            senderInfo + "的搜证请求：" + content +
+                            "\n请直接使用 authorizeSearch 工具为该角色授权搜证，" +
+                            "roleId 为「" + (senderRoleIdHex != null ? senderRoleIdHex : "unknown") + "」，" +
+                            "不要反问玩家身份。");
                 }
                 // No AI-to-AI chain in INVESTIGATION
             }
@@ -245,6 +262,15 @@ public class AgentOrchestrator {
             }
         }
         return matched;
+    }
+
+    private String buildSenderInfo(ObjectId senderRoleId, Script script, boolean fromAi) {
+        if (senderRoleId == null) return fromAi ? "AI角色" : "玩家";
+        return script.getRoles().stream()
+                .filter(r -> Objects.equals(r.getId(), senderRoleId))
+                .map(r -> (fromAi ? "AI角色" : "玩家") + "「" + r.getName() + "」")
+                .findFirst()
+                .orElse(fromAi ? "AI角色" : "玩家");
     }
 
     private String buildRemindMessage(PhaseType phase, String roleIdHex, LiveGameRoom room) {

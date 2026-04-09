@@ -62,4 +62,8 @@ public class LiveGameRoom {
     private String investigationMode; // "PUBLIC" | "PRIVATE"
 
     private String voteSubPhase; // "STATEMENT" | "VOTING" | "RESULT"
+
+    /** RoleId hex strings of human players still awaiting self-introduction. */
+    @Builder.Default
+    private Set<String> awaitingIntroRoleIds = new HashSet<>();
 }
