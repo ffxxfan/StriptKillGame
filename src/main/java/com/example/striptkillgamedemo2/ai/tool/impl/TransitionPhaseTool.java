@@ -235,7 +235,8 @@ public class TransitionPhaseTool implements DmTool {
 
         return Map.of("success", true, "event", "STAGE_ADVANCE",
                 "currentStage", nextStage, "stageTitle", newStage.getStageTitle(),
-                "hint", "请调用 pushStageContent 通知玩家新幕开启，然后发表过渡旁白");
+                "hint", "请调用 pushStageContent 通知玩家新幕开启，然后必须发表本幕开场介绍：" +
+                        "宣布幕次和幕名、概括本幕剧情背景和关键线索、说明核心任务、预告本幕环节");
     }
 
     private void startPhaseTimer(String roomId, StagePhase phase) {

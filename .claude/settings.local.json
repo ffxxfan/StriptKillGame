@@ -43,7 +43,9 @@
       "Bash(find *)",
       "Bash(./mvnw dependency:resolve -q)",
       "Bash(find ~/.m2/repository/org/springframework/ai -name spring-ai-core-1.1*)",
-      "Bash(find E:loveCodingStriptKillGameDemo2/frontend/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.vue -o -name *.js \\\\\\))"
+      "Bash(find E:loveCodingStriptKillGameDemo2/frontend/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.vue -o -name *.js \\\\\\))",
+      "Bash(ls -la /mnt/)",
+      "Read(//c//**)"
     ]
   }
 }

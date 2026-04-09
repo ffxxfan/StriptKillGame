@@ -171,10 +171,11 @@ public class GameFlowService {
         messagingTemplate.convertAndSend("/topic/room." + roomId,
                 Map.of("type", "SYSTEM", "content", "进入新阶段: " + stage.getStageTitle()));
 
-        // Trigger DM to signal stage update and narrate transition
+        // Trigger DM to signal stage update and deliver stage introduction
         dmExecutor.executeDmAction(roomId, null,
                 "游戏进入了第" + (nextStage + 1) + "幕「" + stage.getStageTitle() + "」。" +
-                "请先调用 pushStageContent 工具通知玩家新幕已开启，然后发表过渡旁白引导玩家。");
+                "请先调用 pushStageContent 工具通知玩家新幕已开启，然后必须发表本幕开场介绍：" +
+                "宣布幕次和幕名、概括本幕剧情背景和关键线索、说明核心任务、预告本幕包含的环节。");
 
         log.info("Room {} advanced to stage {}", roomId, nextStage);
         return room;

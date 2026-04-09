@@ -53,6 +53,18 @@ public class PromptBuilder {
         vars.put("isLastStage", String.valueOf(isLastStage));
         vars.put("totalStages", String.valueOf(totalStages));
 
+        // Load stage-specific instructions
+        String stageTemplatePath;
+        if (isFirstStage) {
+            stageTemplatePath = "prompts/dm-stage-first.md";
+        } else if (isLastStage) {
+            stageTemplatePath = "prompts/dm-stage-last.md";
+        } else {
+            stageTemplatePath = "prompts/dm-stage-normal.md";
+        }
+        String stageInstructions = replaceVars(loadClasspathTemplate(stageTemplatePath), vars);
+        vars.put("stageSpecificInstructions", stageInstructions);
+
         String prompt = replaceVars(template, vars);
 
         if (!recentMessages.isEmpty()) {

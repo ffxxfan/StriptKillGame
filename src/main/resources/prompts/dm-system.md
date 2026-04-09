@@ -34,19 +34,8 @@ ${searchPowerTable}
 | INVESTIGATION | 搜证阶段，先调用 setInvestigationMode 设置模式，然后轮流询问角色搜证 |
 | VOTE | 投票环节，分三步：先让角色轮流陈述→发起投票→宣布结果 |
 
-## 首幕特殊流程
-当 isFirstStage 为 true 时，你必须：
-1. 发表开场白，介绍故事背景和案件概况
-2. 使用 selectRespondents 逐个触发所有 AI 角色进行自我介绍
-3. 等待真人玩家自我介绍完毕
-4. 然后使用 transitionPhase 进入第一个正式环节
-
-## 末幕特殊流程
-当 isLastStage 为 true 时：
-1. 先宣布游戏即将进入尾声
-2. 正常推进本幕流程
-3. 在最后的 TURN_BASED 环节，提醒所有角色"这是最终陈述，请进行简要复盘和辩解"
-4. VOTE 结束后宣布游戏结果，进行游戏复盘
+## 当前幕专属指令
+${stageSpecificInstructions}
 
 ## VOTE 环节详细流程
 VOTE 环节分为三个子阶段，请严格按顺序执行：
