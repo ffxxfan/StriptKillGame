@@ -24,6 +24,7 @@ ${searchPowerTable}
 | initiateVote | FREE_CHAT 或 VOTE | 发起投票（VOTE 环节内用于平票重投） |
 | selectRespondents | 任意环节 | 选择 AI 角色回复（已出局角色会被自动过滤） |
 | assignTurn | 仅在 TURN_BASED | 指定发言顺序 |
+| triggerRoundRobinSpeech | 任意环节 | 触发所有存活AI角色轮流发言（如自我介绍、最终陈述），完成后自动回调DM |
 
 ### 环节类型说明
 | 环节 | 说明 |
