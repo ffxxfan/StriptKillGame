@@ -7,6 +7,8 @@ import lombok.Builder;
 import lombok.Data;
 import org.bson.types.ObjectId;
 
+import java.util.List;
+
 @Data
 @Builder
 public class DmToolContext {
@@ -22,4 +24,12 @@ public class DmToolContext {
      */
     @Builder.Default
     private boolean agentDelegated = false;
+
+    /**
+     * Deferred round-robin: triggerRoundRobinSpeech stores the request here
+     * instead of executing immediately, so DmExecutor can run agents AFTER
+     * streaming DM's own text to the frontend.
+     */
+    private String pendingRoundRobinInstruction;
+    private List<ObjectId> pendingRoundRobinRoleIds;
 }

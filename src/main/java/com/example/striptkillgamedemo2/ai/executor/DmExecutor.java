@@ -38,6 +38,7 @@ public class DmExecutor {
     private final PromptBuilder promptBuilder;
     private final MemoryManager memoryManager;
     private final DmToolRegistry dmToolRegistry;
+    private final AgentExecutor agentExecutor;
     private final LiveGameRoomService liveGameRoomService;
     private final ScriptCacheService scriptCacheService;
     private final GameChatService gameChatService;
@@ -153,6 +154,27 @@ public class DmExecutor {
             // Remove typing
             messagingTemplate.convertAndSend("/topic/room." + roomId + ".signal",
                     Map.of("type", "TYPING_END", "roleId", dmRoleIdHex));
+
+            // Execute deferred round-robin speech AFTER DM text is fully streamed
+            if (toolCtx.getPendingRoundRobinInstruction() != null
+                    && toolCtx.getPendingRoundRobinRoleIds() != null
+                    && !toolCtx.getPendingRoundRobinRoleIds().isEmpty()) {
+                String instruction = toolCtx.getPendingRoundRobinInstruction();
+                List<ObjectId> roleIds = toolCtx.getPendingRoundRobinRoleIds();
+                log.info("[DmExecutor] executing deferred round-robin: {} agents, instruction='{}'",
+                        roleIds.size(), instruction);
+
+                for (ObjectId roleId : roleIds) {
+                    agentExecutor.executeAgentReplySync(roomId, roleId, instruction);
+                }
+
+                log.info("[DmExecutor] deferred round-robin completed for room={}", roomId);
+
+                // Trigger DM callback to continue the flow
+                executeDmAction(roomId, null,
+                        "所有AI角色已完成「" + instruction + "」。请继续推进流程。" +
+                        "如需等待真人玩家发言请提醒他们，否则请使用 transitionPhase 推进到下一环节。");
+            }
 
         } catch (Exception e) {
             log.error("DM execution failed for room {}", roomId, e);

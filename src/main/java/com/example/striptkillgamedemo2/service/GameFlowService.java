@@ -100,10 +100,13 @@ public class GameFlowService {
             }
         }
 
-        // Trigger DM to signal stage update and deliver opening narration
+        // Trigger DM to execute the first-stage flow defined in dm-stage-first.md
+        // Step 3 (transitionPhase) is handled by triggerRoundRobinSpeech's async callback
         dmExecutor.executeDmAction(roomId, null,
-                "游戏刚刚开始，你是主持人。请先调用 pushStageContent 工具通知玩家第一幕已开启，" +
-                "然后发表一段精彩的开场白，介绍故事背景、案件概况，并引导玩家进入第一幕讨论。");
+                "游戏刚刚开始，你是主持人。请严格按照「首幕流程」依次执行：" +
+                "第一步：调用 pushStageContent 通知玩家第一幕已开启，然后发表开场白介绍故事背景和案件概况；" +
+                "第二步：宣布进入自我介绍环节，然后调用 triggerRoundRobinSpeech 工具（instruction 设为'请进行自我介绍，介绍你的公开身份、职业和与其他角色的关系'）让所有AI角色轮流自我介绍。" +
+                "请务必在本次调用中完成以上两步，每步都必须调用对应工具。");
 
         log.info("Game started in room {}", roomId);
         return room;
