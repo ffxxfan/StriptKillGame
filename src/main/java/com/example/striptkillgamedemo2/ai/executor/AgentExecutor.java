@@ -50,20 +50,20 @@ public class AgentExecutor {
     /** Trigger a single agent reply asynchronously. */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId) {
-        doExecuteAgentReply(roomId, roleId, false);
+        doExecuteAgentReply(roomId, roleId, false, null);
     }
 
     /** Trigger a single agent reply with last-round redirect flag. */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId, boolean lastAiRound) {
-        doExecuteAgentReply(roomId, roleId, lastAiRound);
+        doExecuteAgentReply(roomId, roleId, lastAiRound, null);
     }
 
     /** Trigger multiple agents sequentially (one finishes before the next starts). */
     @Async("aiExecutor")
     public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds) {
         for (ObjectId roleId : roleIds) {
-            doExecuteAgentReply(roomId, roleId, false);
+            doExecuteAgentReply(roomId, roleId, false, null);
         }
     }
 
@@ -72,8 +72,18 @@ public class AgentExecutor {
         for (int i = 0; i < roleIds.size(); i++) {
             // Only the last agent in the batch gets the redirect flag
             boolean isLast = lastAiRound && (i == roleIds.size() - 1);
-            doExecuteAgentReply(roomId, roleIds.get(i), isLast);
+            doExecuteAgentReply(roomId, roleIds.get(i), isLast, null);
         }
+    }
+
+    /**
+     * Synchronous agent reply — runs on caller's thread.
+     * Used by DM tools that need to wait for agent completion before continuing.
+     *
+     * @param extraInstruction optional instruction appended to agent prompt as 【系统指令】, may be null
+     */
+    public void executeAgentReplySync(String roomId, ObjectId roleId, String extraInstruction) {
+        doExecuteAgentReply(roomId, roleId, false, extraInstruction);
     }
 
     /**
@@ -139,7 +149,7 @@ public class AgentExecutor {
         }
     }
 
-    private void doExecuteAgentReply(String roomId, ObjectId roleId, boolean lastAiRound) {
+    private void doExecuteAgentReply(String roomId, ObjectId roleId, boolean lastAiRound, String extraInstruction) {
         try {
             LiveGameRoom room = liveGameRoomService.get(roomId);
             if (room == null) return;
@@ -193,6 +203,11 @@ public class AgentExecutor {
                         "请将话题自然地引向这些真实玩家，点名邀请他们参与讨论或表达看法。" +
                         "如有流程上的需求（如请求投票、搜证等），则引向主持人（DM）。";
                 log.info("[AgentReply] lastAiRound redirect injected for role={}, humanPlayers={}", roleId, humanNames);
+            }
+
+            // Extra instruction from tool (e.g. "请进行自我介绍")
+            if (extraInstruction != null && !extraInstruction.isBlank()) {
+                promptText += "\n\n【系统指令】" + extraInstruction;
             }
 
             // Blocking call — avoids concurrent streaming issues and filters out thinking
