@@ -16,33 +16,38 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
 
 /**
- *   Clue entity representing static clue templates.
- *   Multiple instances can be created during gameplay via GameClueInstance.
- *
- *   Fields:
- *   - type: TEXT or IMAGE clue type
- *   - content: Text content for TEXT type clues
- *   - imageUrl: Image URL for IMAGE type clues
- *   - isInitialHidden: Whether this clue is hidden at game start
- *   - stageNumber: Stage number when this clue becomes available
- *   - searchableRoleIds: IDs of roles that can search for this clue
+ * 线索定义。
+ * <p>
+ * 内嵌于 {@link Script#getClues()}，作为静态线索模板。游戏运行时会按此模板创建
+ * {@link com.example.striptkillgamedemo2.entity.redis.GameClueInstance} 存放动态状态。
+ * </p>
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Clue {
+    /** 线索 ID。 */
     private ObjectId id;
+    /** 线索标题。 */
     private String title;
-    private ClueType type; // TEXT, IMAGE, AUDIO
+    /** 线索媒体类型：{@code TEXT}、{@code IMAGE}、{@code VIDEO}。 */
+    private ClueType type;
+    /** 文本线索内容（当 {@link #type} 为 {@link ClueType#TEXT} 时有效）。 */
     private String content;
+    /** 图片线索的图片 URL（当 {@link #type} 为 {@link ClueType#IMAGE} 时有效）。 */
     private String imageUrl;
 
     // 控制逻辑
+    /** 是否初始隐藏；初始隐藏的线索需通过搜证发现。 */
     @JsonProperty("isInitialHidden")
-    private boolean isInitialHidden = true; // 是否初始隐藏
-    private List<String> searchableRoleIds; // 哪些角色可以搜到这个线索
-    private List<String> locationTag;             // 所在地点
-    private List<Integer> stages; // Stages where this clue can be discovered; null/empty = any stage
-    private String visibility;    // "PUBLIC" | "PRIVATE"; null defaults to PUBLIC
+    private boolean isInitialHidden = true;
+    /** 可搜索到此线索的角色 ID 列表。 */
+    private List<String> searchableRoleIds;
+    /** 线索所处的地点标签（可能有多个位置）。 */
+    private List<String> locationTag;
+    /** 允许发现此线索的阶段编号；{@code null} 或空表示不限阶段。 */
+    private List<Integer> stages;
+    /** 可见性：{@code PUBLIC} 或 {@code PRIVATE}，{@code null} 时默认 {@code PUBLIC}。 */
+    private String visibility;
 }

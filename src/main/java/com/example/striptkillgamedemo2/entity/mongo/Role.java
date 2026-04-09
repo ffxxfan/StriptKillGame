@@ -14,40 +14,43 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import java.util.List;
 
 /**
- * Role entity representing character definition within a script.
+ * 剧本角色定义。
+ * <p>
+ * 内嵌于 {@link Script#getRoles()}，描述某一角色的公共信息、AI 人设与游戏机制属性。
+ * </p>
  *
- * Note on Clue-Role Relationship:
- * Clue discoverability is controlled by Clue.searchableRoleIds (source of truth).
- * Role.selfClueIds is for convenience/query optimization and should always match
- * reverse lookup from Clue collection. The system validates consistency on game start.
- *
- * Fields:
- * - isNpc: Whether this role is played by an AI agent
- * - prompt: Core AI prompt instructions for NPCs
- * - secret: Secret information that must not be revealed to other players
- * - selfClueIds: IDs of clues this role can search for
- * - locationTag: Optional tag indicating search location
- * - searchPower: Optional search action points for limiting searches
+ * <p><b>线索-角色关系说明：</b>线索可被哪些角色搜到，以 {@link Clue#getSearchableRoleIds()}
+ * 为准；本类的 {@link #selfClueIds} 用于便捷查询，应当与反向查询结果保持一致，系统在
+ * 游戏开始时会做一致性校验。</p>
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Role {
+    /** 角色 ID，在剧本内部唯一。 */
     @NotBlank
-    private ObjectId id; // 在剧本内部唯一的 ID，如 "ROLE_001"
+    private ObjectId id;
+    /** 角色姓名。 */
     @NotBlank
     private String name;
+    /** 角色头像 URL。 */
     private String avatar;
+    /** 是否为 NPC（由 AI 扮演）。 */
     @JsonProperty("isNpc")
     private boolean isNpc;
 
     // --- AI 相关 ---
-    private String prompt;    // AI 核心人设指令
-    private String secret;    // 不可泄露的秘密
+    /** AI 核心人设 Prompt 指令。 */
+    private String prompt;
+    /** 角色秘密，禁止向其他玩家泄露。 */
+    private String secret;
 
     // --- 游戏机制相关 ---
-    private List<String> selfClueIds; // 角色自带的线索 ID
-    private String locationTag;       // 该角色初始所在的地点（用于搜证）
-    private int searchPower;          // 初始行动力
+    /** 角色自带可搜索到的线索 ID 列表。 */
+    private List<String> selfClueIds;
+    /** 角色初始所在的地点标签，用于搜证定位。 */
+    private String locationTag;
+    /** 初始行动力（可搜证次数）。 */
+    private int searchPower;
 }

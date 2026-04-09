@@ -15,7 +15,12 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 /**
- * 认证控制器：处理登录、注册、登出、改密、刷新 Token、获取用户信息
+ * 认证控制器。
+ * <p>
+ * 处理用户的登录、注册、登出、修改密码、刷新 Token 以及获取当前用户信息等接口。
+ * 所有接口统一挂载在 {@code /api/auth} 路径下；除登录/注册/刷新外均需携带有效的
+ * Access Token。
+ * </p>
  */
 @Slf4j
 @RestController

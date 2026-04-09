@@ -15,13 +15,30 @@ import org.springframework.context.annotation.Configuration;
 
 import java.io.IOException;
 
+/**
+ * Jackson 序列化配置。
+ * <p>
+ * 注册以下定制：
+ * <ul>
+ *     <li>{@link JavaTimeModule}：确保 {@code LocalDateTime} 等 JSR-310 时间类型可序列化。</li>
+ *     <li>{@link ObjectId} 序列化/反序列化：写入 JSON 时使用十六进制字符串，避免将 MongoDB
+ *     ObjectId 暴露为复杂对象。</li>
+ *     <li>关闭 {@code WRITE_DATES_AS_TIMESTAMPS}：使 {@code LocalDateTime} 以 ISO-8601 字符串输出。</li>
+ * </ul>
+ * </p>
+ */
 @Configuration
 public class JacksonConfig {
 
+    /**
+     * 提供 Jackson 构造器定制，注入 ObjectId 与时间类型的序列化规则。
+     *
+     * @return Jackson2ObjectMapperBuilder 的定制回调
+     */
     @Bean
     public Jackson2ObjectMapperBuilderCustomizer objectIdJacksonCustomizer() {
         return builder -> {
-            // Explicitly register JavaTimeModule to ensure LocalDateTime serializes correctly
+            // 显式注册 JavaTimeModule，保证 LocalDateTime 序列化正确
             builder.modulesToInstall(new JavaTimeModule());
 
             SimpleModule objectIdModule = new SimpleModule("ObjectIdModule");
@@ -41,7 +58,7 @@ public class JacksonConfig {
             });
             builder.modulesToInstall(objectIdModule);
 
-            // Write LocalDateTime as ISO-8601 string, not array
+            // 将 LocalDateTime 输出为 ISO-8601 字符串而非时间戳数组
             builder.featuresToDisable(
                     com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS
             );

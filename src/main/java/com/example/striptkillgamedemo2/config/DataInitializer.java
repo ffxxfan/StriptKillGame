@@ -19,8 +19,12 @@ import java.util.Map;
 
 /**
  * 开发环境测试数据初始化器。
- * 仅在 scripts 集合为空时执行插入，避免重复。
- * 激活方式：application.properties 中添加 spring.profiles.active=dev
+ * <p>
+ * 实现 {@link CommandLineRunner}，在应用启动后检查 MongoDB 中 {@code scripts} 集合是否为空，
+ * 若为空则批量插入预置的测试剧本数据，便于本地开发与调试。
+ * </p>
+ * <p><b>仅在 {@code dev} profile 下激活</b>，生产环境不会执行；开启方式：在
+ * {@code application.properties} 中设置 {@code spring.profiles.active=dev}。</p>
  */
 @Slf4j
 @Component
@@ -30,6 +34,12 @@ public class DataInitializer implements CommandLineRunner {
 
     private final ScriptRepository scriptRepository;
 
+    /**
+     * Spring Boot 启动完成后回调入口。
+     * <p>若 {@code scripts} 集合非空则跳过；否则插入内建的测试剧本列表。</p>
+     *
+     * @param args 命令行参数（未使用）
+     */
     @Override
     public void run(String... args) {
         if (scriptRepository.count() > 0) {

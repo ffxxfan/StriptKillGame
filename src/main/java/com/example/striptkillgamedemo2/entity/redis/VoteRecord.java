@@ -9,32 +9,32 @@ import org.bson.types.ObjectId;
 import java.time.LocalDateTime;
 
 /**
- * VoteRecord representing voting records during gameplay.
- * Stored in Redis List with key: game:{roomId}:votes
- *
- * Fields:
- * - id: Vote record identifier
- * - gameRoomId: Reference to the game room
- * - voterUserId: User ID of the voter
- * - stageNumber: Current stage number
- * - votedRoleId: Role ID being voted for
- * - voteCategory: Optional category/type of vote
- * - voteReason: Optional reason for the vote
- * - voteWeight: Optional vote weight for weighted voting
- * - timestamp: When the vote was cast
+ * 投票记录。
+ * <p>
+ * 存放于 Redis 列表 {@code game:{roomId}:votes}，每条记录代表一次投票行为，用于审计与复盘。
+ * </p>
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class VoteRecord {
+    /** 投票记录 ID。 */
     private ObjectId id;
+    /** 所属房间 ID。 */
     private ObjectId gameRoomId;
+    /** 投票者用户 ID。 */
     private ObjectId voterUserId;
+    /** 当前阶段编号。 */
     private int stageNumber;
+    /** 被投的目标角色 ID。 */
     private ObjectId votedRoleId;
+    /** 投票类别，可选。 */
     private String voteCategory;
+    /** 投票理由，可选。 */
     private String voteReason;
+    /** 投票权重，用于加权投票，可选。 */
     private Integer voteWeight;
+    /** 投票时间戳。 */
     private LocalDateTime timestamp;
 }
