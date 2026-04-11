@@ -25,6 +25,15 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * 游戏终局复盘服务。
+ *
+ * <p>在游戏结束时异步调用 LLM，综合所有幕次的记忆摘要、线索发现情况和投票记录，
+ * 生成完整的游戏复盘报告（{@link GameReviewResult}），并通过 WebSocket 广播至房间内所有玩家。</p>
+ *
+ * @see GameReviewResult
+ * @see com.example.striptkillgamedemo2.ai.memory.MemoryManager
+ */
 public class FinalReviewService {
 
     private final ChatModel chatModel;
@@ -36,6 +45,15 @@ public class FinalReviewService {
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 异步生成游戏复盘报告。
+     *
+     * <p>收集记忆摘要、线索池和投票记录，构建复盘提示词调用 LLM，
+     * 解析结果后通过 {@code GAME_END} 类型消息广播至房间。</p>
+     *
+     * @param roomId 房间 ID
+     * @param room   游戏房间运行时状态
+     */
     @Async("aiExecutor")
     public void generateReview(String roomId, LiveGameRoom room) {
         try {
@@ -80,6 +98,13 @@ public class FinalReviewService {
         }
     }
 
+    /**
+     * 构建线索池摘要，统计已发现/总计线索及其公开/私有状态。
+     *
+     * @param room   游戏房间运行时状态
+     * @param script 剧本数据
+     * @return 线索池摘要文本
+     */
     private String buildCluePoolSummary(LiveGameRoom room, Script script) {
         if (room.getClueInstances() == null || room.getClueInstances().isEmpty()) {
             return "本局无线索被发现";
@@ -106,6 +131,12 @@ public class FinalReviewService {
         return sb.toString();
     }
 
+    /**
+     * 构建投票记录摘要。
+     *
+     * @param roomId 房间 ID
+     * @return 投票记录文本
+     */
     private String buildVoteRecords(String roomId) {
         List<String> records = redisTemplate.opsForList()
                 .range("game:" + roomId + ":votes", 0, -1);

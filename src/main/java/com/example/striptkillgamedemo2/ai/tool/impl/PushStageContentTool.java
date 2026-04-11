@@ -17,9 +17,13 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * DM tool that advances the game to a new stage and broadcasts a lightweight
- * STAGE_UPDATE signal via WebSocket. Script content is NOT pushed here —
- * clients fetch it on demand via GET /api/scripts/my-content.
+ * DM 工具：推送幕次内容。
+ *
+ * <p>将游戏推进到新一幕，通过 WebSocket 广播轻量级的 {@code STAGE_UPDATE} 信号。
+ * 此工具不推送剧本内容本身 — 客户端收到信号后通过 {@code GET /api/scripts/my-content}
+ * 按需获取。</p>
+ *
+ * <p>如果指定的 {@code stageIndex} 与当前幕次不同，会更新 Redis 中的房间状态。</p>
  */
 @Slf4j
 @Component
@@ -29,9 +33,12 @@ public class PushStageContentTool implements DmTool {
     private final SimpMessagingTemplate messagingTemplate;
     private final LiveGameRoomService liveGameRoomService;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
-        /** Stage index to activate (0-based). If null, uses current stage. */
+        /** 要激活的幕次序号（0 起始）。为 {@code null} 时使用当前幕次 */
         private Integer stageIndex;
     }
 

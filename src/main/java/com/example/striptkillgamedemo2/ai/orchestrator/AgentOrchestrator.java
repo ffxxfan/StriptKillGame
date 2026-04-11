@@ -32,6 +32,27 @@ import java.util.regex.Pattern;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * AI 代理编排器 — 消息路由的中央枢纽。
+ *
+ * <p>监听 {@link ChatMessageEvent}，通过三层响应策略决定哪些 AI 代理需要回复：</p>
+ * <ol>
+ *   <li><b>Layer 1: @mention</b> — 精确匹配 {@code @角色名}，触发对应代理</li>
+ *   <li><b>Layer 2: 名称匹配</b> — 消息中包含角色名子串，触发最多 2 个代理</li>
+ *   <li><b>Layer 3: DM 裁决</b> — DM 使用 {@code selectRespondents} 工具选择代理（仅限人类消息）</li>
+ * </ol>
+ *
+ * <p>附加功能：</p>
+ * <ul>
+ *   <li>AI-to-AI 轮次计数器 — 防止 AI 之间无限对话</li>
+ *   <li>空闲计时器 — 自由讨论阶段长时间无人发言时触发 DM 推进</li>
+ *   <li>阶段规则执行 — 通过 {@link PhaseRuleEnforcer} 检查发言权限</li>
+ *   <li>自我介绍追踪 — 追踪真人玩家是否完成自我介绍</li>
+ * </ul>
+ *
+ * @see com.example.striptkillgamedemo2.ai.executor.AgentExecutor
+ * @see com.example.striptkillgamedemo2.ai.executor.DmExecutor
+ */
 public class AgentOrchestrator {
 
     private final AgentExecutor agentExecutor;
@@ -41,15 +62,25 @@ public class AgentOrchestrator {
     private final AiEngineProperties aiProperties;
     private final PhaseRuleEnforcer phaseRuleEnforcer;
 
+    /** @mention 正则匹配模式 */
     private static final Pattern MENTION_PATTERN = Pattern.compile("@(\\S+)");
 
-    // Feature 1: AI-to-AI round counter per room
+    /** 每个房间的 AI-to-AI 对话轮次计数器，人类消息重置计数 */
     private final ConcurrentHashMap<String, AtomicInteger> aiRoundCounters = new ConcurrentHashMap<>();
 
-    // Feature 2: Idle timer per room
+    /** 每个房间的空闲计时器，超时后触发 DM 推进 */
     private final ConcurrentHashMap<String, ScheduledFuture<?>> idleTimers = new ConcurrentHashMap<>();
+    /** 空闲计时器调度线程池 */
     private final ScheduledExecutorService idleScheduler = Executors.newScheduledThreadPool(1);
 
+    /**
+     * 聊天消息事件处理器 — 编排器的核心入口。
+     *
+     * <p>接收所有聊天消息，执行阶段规则检查，然后根据当前阶段类型
+     * 分发到对应的处理逻辑（轮流发言、自由讨论、搜证等）。</p>
+     *
+     * @param event 聊天消息事件
+     */
     @EventListener
     public void onChatMessage(ChatMessageEvent event) {
         String roomId = event.getRoomId();
@@ -155,6 +186,14 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 处理轮流发言阶段的消息。按预定发言顺序推进，AI 角色自动触发回复。
+     *
+     * @param roomId 房间 ID
+     * @param room   游戏房间运行时状态
+     * @param script 剧本数据
+     * @param event  聊天消息事件
+     */
     private void handleTurnBased(String roomId, LiveGameRoom room, Script script,
                                   ChatMessageEvent event) {
         StagePhase phase = getCurrentStagePhase(script, room);
@@ -191,6 +230,16 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 处理自由讨论阶段的消息。通过三层策略匹配并触发 AI 代理回复。
+     *
+     * @param roomId       房间 ID
+     * @param room         游戏房间运行时状态
+     * @param script       剧本数据
+     * @param content      消息内容
+     * @param senderRoleId 发送者角色 ID
+     * @param fromAi       是否来自 AI
+     */
     private void handleFreeChat(String roomId, LiveGameRoom room, Script script,
                                  String content, ObjectId senderRoleId, boolean fromAi) {
         // Compute redirect flag at trigger time: will the next AI response(s) hit the round limit?
@@ -250,6 +299,14 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 在消息内容中查找被提及的 AI 角色（名称子串匹配）。
+     *
+     * @param content 消息内容
+     * @param script  剧本数据
+     * @param room    游戏房间运行时状态
+     * @return 匹配到的 AI 角色 ID 列表
+     */
     List<ObjectId> findNamedAiRoles(String content, Script script, LiveGameRoom room) {
         List<ObjectId> matched = new ArrayList<>();
         for (Role role : script.getRoles()) {
@@ -283,6 +340,12 @@ public class AgentOrchestrator {
         };
     }
 
+    /**
+     * 判断消息内容是否为 DM 请求（包含 @DM、搜证、投票等关键词）。
+     *
+     * @param content 消息内容
+     * @return 是否为 DM 请求
+     */
     boolean isDmRequest(String content) {
         if (content.contains("@DM") || content.contains("@主持人")) return true;
         if (content.contains("搜证") || content.contains("搜索") || content.contains("调查")) return true;
@@ -291,6 +354,12 @@ public class AgentOrchestrator {
         return false;
     }
 
+    /**
+     * 计算有效的 AI 最大对话轮次。根据真人玩家数量动态调整，玩家越多轮次越少。
+     *
+     * @param room 游戏房间运行时状态
+     * @return 有效的最大轮次数
+     */
     int calculateEffectiveMaxRounds(LiveGameRoom room) {
         int configMax = aiProperties.getMaxAiChatRounds();
         long humanCount = room.getMembers().stream()
@@ -299,7 +368,15 @@ public class AgentOrchestrator {
         return (int) Math.max(2, configMax - (humanCount - 1));
     }
 
-    /** Reset (or start) the idle timer for a room. Called on any activity. */
+    /**
+     * 重置（或启动）房间的空闲计时器。在任何消息活动时调用。
+     *
+     * <p>超时模式下使用 30 秒静默检测自动推进，正常模式使用配置的空闲超时时间。</p>
+     *
+     * @param roomId 房间 ID
+     * @param room   游戏房间运行时状态
+     * @param script 剧本数据
+     */
     public void resetIdleTimer(String roomId, LiveGameRoom room, Script script) {
         cancelIdleTimer(roomId);
 
@@ -335,7 +412,11 @@ public class AgentOrchestrator {
         idleTimers.put(roomId, future);
     }
 
-    /** Reset idle timer from external signal (user activity). */
+    /**
+     * 从外部信号（用户活动）重置空闲计时器。
+     *
+     * @param roomId 房间 ID
+     */
     public void resetIdleTimer(String roomId) {
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null || room.getScriptId() == null) return;
@@ -345,6 +426,11 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 取消指定房间的空闲计时器。
+     *
+     * @param roomId 房间 ID
+     */
     public void cancelIdleTimer(String roomId) {
         ScheduledFuture<?> existing = idleTimers.remove(roomId);
         if (existing != null && !existing.isDone()) {
@@ -352,16 +438,27 @@ public class AgentOrchestrator {
         }
     }
 
+    /**
+     * 重置指定房间的 AI 对话轮次计数器。
+     *
+     * @param roomId 房间 ID
+     */
     public void resetRoundCounter(String roomId) {
         AtomicInteger counter = aiRoundCounters.get(roomId);
         if (counter != null) counter.set(0);
     }
 
+    /**
+     * 清理房间相关资源（取消计时器、移除轮次计数器）。
+     *
+     * @param roomId 房间 ID
+     */
     public void cleanupRoom(String roomId) {
         cancelIdleTimer(roomId);
         aiRoundCounters.remove(roomId);
     }
 
+    /** 应用关闭时清理调度线程池。 */
     @PreDestroy
     public void shutdown() {
         idleScheduler.shutdownNow();

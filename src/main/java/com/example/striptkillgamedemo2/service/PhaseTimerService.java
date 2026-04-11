@@ -15,6 +15,20 @@ import java.util.concurrent.*;
 
 @Slf4j
 @Service
+/**
+ * 游戏阶段计时器服务。
+ *
+ * <p>为每个阶段管理倒计时，核心行为：</p>
+ * <ol>
+ *   <li>广播 {@code PHASE_TIMER_START} 信号，前端显示倒计时</li>
+ *   <li>在剩余 60 秒时发送提醒（通知玩家和 DM）</li>
+ *   <li>超时后根据阶段类型执行不同策略（投票自动关闭、自由讨论进入超时模式等）</li>
+ * </ol>
+ *
+ * <p>使用 {@code @Lazy} 注入 {@link DmExecutor} 以打破循环依赖。</p>
+ *
+ * @see com.example.striptkillgamedemo2.ai.tool.impl.TransitionPhaseTool
+ */
 public class PhaseTimerService {
 
     private final AiEngineProperties properties;
@@ -23,6 +37,9 @@ public class PhaseTimerService {
     private final DmExecutor dmExecutor;
     private final VoteService voteService;
 
+    /**
+     * 构造阶段计时器服务。使用 {@code @Lazy} 注入 DmExecutor 以打破循环依赖。
+     */
     public PhaseTimerService(AiEngineProperties properties,
                              LiveGameRoomService liveGameRoomService,
                              SimpMessagingTemplate messagingTemplate,
@@ -35,7 +52,7 @@ public class PhaseTimerService {
         this.voteService = voteService;
     }
 
-    /** Reminder threshold — warn when this many seconds remain. */
+    /** 提醒阈值 — 当剩余秒数等于此值时发出提醒 */
     private static final int REMINDER_BEFORE_SECONDS = 60;
 
     private final ConcurrentHashMap<String, ScheduledFuture<?>> timers = new ConcurrentHashMap<>();
@@ -47,13 +64,20 @@ public class PhaseTimerService {
     }
 
     /**
-     * Unified phase timer. Starts a countdown for the given phase type.
-     * Duration is taken from StagePhase.timeLimitSeconds; if 0, falls back to config defaults.
+     * 统一的阶段计时器。为指定阶段类型启动倒计时。
      *
-     * Behaviour:
-     *   1. Broadcasts PHASE_TIMER_START to frontend (so UI can show countdown)
-     *   2. Schedules a reminder at (duration - 60s) to warn players and DM
-     *   3. Schedules a timeout at duration to tell DM to transition
+     * <p>时长取自 {@code StagePhase.timeLimitSeconds}；若为 0 则回退到配置默认值。</p>
+     *
+     * <p>行为：</p>
+     * <ol>
+     *   <li>广播 {@code PHASE_TIMER_START} 到前端（供 UI 显示倒计时）</li>
+     *   <li>在 {@code (duration - 60s)} 时调度提醒（通知玩家和 DM 准备收尾）</li>
+     *   <li>在 {@code duration} 时调度超时处理（通知 DM 推进流程）</li>
+     * </ol>
+     *
+     * @param roomId          房间 ID
+     * @param phaseType       阶段类型
+     * @param durationSeconds 倒计时时长（秒），为 0 时使用配置默认值
      */
     public void startPhaseTimer(String roomId, PhaseType phaseType, int durationSeconds) {
         String key = timerKey(roomId, phaseType);
@@ -124,11 +148,22 @@ public class PhaseTimerService {
         log.info("[PhaseTimer] started, room={}, phase={}, duration={}s", roomId, phaseType, duration);
     }
 
+    /**
+     * 取消指定房间和阶段类型的计时器。
+     *
+     * @param roomId    房间 ID
+     * @param phaseType 阶段类型
+     */
     public void cancelTimer(String roomId, PhaseType phaseType) {
         String key = timerKey(roomId, phaseType);
         cancelTimerByKey(key);
     }
 
+    /**
+     * 取消指定房间的所有计时器和提醒。
+     *
+     * @param roomId 房间 ID
+     */
     public void cancelAllTimers(String roomId) {
         String prefix = roomId + ":";
         timers.keySet().stream()
@@ -175,6 +210,7 @@ public class PhaseTimerService {
         };
     }
 
+    /** 应用关闭时清理调度线程池。 */
     @PreDestroy
     public void shutdown() {
         scheduler.shutdownNow();

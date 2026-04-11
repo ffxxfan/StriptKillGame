@@ -34,6 +34,21 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * DM（主持人）执行器。
+ *
+ * <p>负责调用 LLM 生成 DM 的回复和工具调用，核心功能包括：</p>
+ * <ul>
+ *   <li>构建 DM 系统提示词并绑定可用工具回调</li>
+ *   <li>通过 Spring AI 的工具调用循环执行 DM 决策（阶段推进、投票发起等）</li>
+ *   <li>将 DM 回复分块流式传输给前端</li>
+ *   <li>处理代理委托（{@code agentDelegated}）— 当工具委托 AI 代理发言时抑制 DM 文本</li>
+ *   <li>处理延迟轮流发言 — 在 DM 文本传输完成后再执行 AI 代理的轮流发言</li>
+ * </ul>
+ *
+ * @see com.example.striptkillgamedemo2.ai.tool.DmToolRegistry
+ * @see com.example.striptkillgamedemo2.ai.tool.DmToolContext
+ */
 public class DmExecutor {
 
     private final ChatModel chatModel;
@@ -49,9 +64,21 @@ public class DmExecutor {
 
     private static final String THINK_OPEN = "<think>";
     private static final String THINK_CLOSE = "</think>";
+    /** 流式传输每个分块的字符数 */
     private static final int STREAM_CHUNK_SIZE = 2;
+    /** 分块之间的延迟（毫秒） */
     private static final long STREAM_CHUNK_DELAY_MS = 30;
 
+    /**
+     * 异步执行 DM 动作。
+     *
+     * <p>完整流程：构建工具上下文 → 构建提示词 → 调用 LLM（含工具循环） →
+     * 处理代理委托 → 流式传输回复 → 存储消息 → 执行延迟轮流发言。</p>
+     *
+     * @param triggerRoleId 触发此动作的角色 ID，可为 {@code null}
+     * @param roomId        房间 ID
+     * @param reason        触发原因或用户消息内容
+     */
     @Async("aiExecutor")
     public void executeDmAction(String roomId, ObjectId triggerRoleId, String reason) {
         try {
@@ -232,8 +259,16 @@ public class DmExecutor {
     }
 
     /**
-     * After AI round-robin completes, check if human players have already spoken.
-     * Returns a DM callback message that either tells DM to proceed or lists who still needs to speak.
+     * AI 轮流发言完成后，检查真人玩家是否已发言。
+     *
+     * <p>返回一条 DM 回调消息：如果所有玩家都已发言则指示 DM 推进流程，
+     * 否则列出尚未发言的玩家名单。</p>
+     *
+     * @param roomId      房间 ID
+     * @param room        游戏房间运行时状态
+     * @param script      剧本数据
+     * @param instruction 原始轮流发言指令
+     * @return DM 回调消息
      */
     private String buildRoundRobinCallback(String roomId, LiveGameRoom room, Script script, String instruction) {
         // Identify human player roleIds

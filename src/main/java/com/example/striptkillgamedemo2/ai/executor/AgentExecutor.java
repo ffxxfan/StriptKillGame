@@ -28,6 +28,24 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * AI 代理执行器。
+ *
+ * <p>负责调用 LLM 生成 AI 角色的回复，核心功能包括：</p>
+ * <ul>
+ *   <li>构建沙箱化的代理提示词并调用 LLM</li>
+ *   <li>将回复通过 WebSocket 分块流式传输给前端，模拟打字效果</li>
+ *   <li>支持 {@code [MSG]} 标记分割多条消息</li>
+ *   <li>发布 {@link ChatMessageEvent} 以触发 AI-to-AI 对话链</li>
+ *   <li>支持 AI 代理投票（{@link #executeAgentVote}）</li>
+ * </ul>
+ *
+ * <p>对于推理模型（如 DeepSeek），{@code extractReply} 优先使用第二个结果（实际回复），
+ * 跳过第一个结果（思考过程）。</p>
+ *
+ * @see com.example.striptkillgamedemo2.ai.orchestrator.AgentOrchestrator
+ * @see com.example.striptkillgamedemo2.ai.prompt.PromptBuilder#buildAgentPrompt
+ */
 public class AgentExecutor {
 
     private final ChatModel chatModel;
@@ -43,23 +61,42 @@ public class AgentExecutor {
 
     private static final String THINK_OPEN = "<think>";
     private static final String THINK_CLOSE = "</think>";
+    /** 流式传输每个分块的字符数 */
     private static final int STREAM_CHUNK_SIZE = 2;
+    /** 分块之间的延迟（毫秒） */
     private static final long STREAM_CHUNK_DELAY_MS = 80;
+    /** 多条消息之间的间隔（毫秒），模拟自然对话节奏 */
     private static final long MSG_GAP_DELAY_MS = 1800;
 
-    /** Trigger a single agent reply asynchronously. */
+    /**
+     * 异步触发单个 AI 代理回复。
+     *
+     * @param roomId 房间 ID
+     * @param roleId 角色 ID
+     */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId) {
         doExecuteAgentReply(roomId, roleId, false, null);
     }
 
-    /** Trigger a single agent reply with last-round redirect flag. */
+    /**
+     * 异步触发单个 AI 代理回复，支持最后一轮话题引导标志。
+     *
+     * @param roomId      房间 ID
+     * @param roleId      角色 ID
+     * @param lastAiRound 是否为本轮最后一次 AI 发言，若为 true 则引导话题至真实玩家
+     */
     @Async("aiExecutor")
     public void executeAgentReply(String roomId, ObjectId roleId, boolean lastAiRound) {
         doExecuteAgentReply(roomId, roleId, lastAiRound, null);
     }
 
-    /** Trigger multiple agents sequentially (one finishes before the next starts). */
+    /**
+     * 异步顺序触发多个 AI 代理回复（前一个完成后再启动下一个）。
+     *
+     * @param roomId  房间 ID
+     * @param roleIds 角色 ID 列表，按顺序执行
+     */
     @Async("aiExecutor")
     public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds) {
         for (ObjectId roleId : roleIds) {
@@ -67,6 +104,13 @@ public class AgentExecutor {
         }
     }
 
+    /**
+     * 异步顺序触发多个 AI 代理回复，仅最后一个代理携带话题引导标志。
+     *
+     * @param roomId      房间 ID
+     * @param roleIds     角色 ID 列表
+     * @param lastAiRound 是否为本轮最后一批 AI 发言
+     */
     @Async("aiExecutor")
     public void executeAgentRepliesSequentially(String roomId, List<ObjectId> roleIds, boolean lastAiRound) {
         for (int i = 0; i < roleIds.size(); i++) {
@@ -77,19 +121,28 @@ public class AgentExecutor {
     }
 
     /**
-     * Synchronous agent reply — runs on caller's thread.
-     * Used by DM tools that need to wait for agent completion before continuing.
+     * 同步执行 AI 代理回复 — 在调用者线程上运行。
      *
-     * @param extraInstruction optional instruction appended to agent prompt as 【系统指令】, may be null
+     * <p>供 DM 工具使用，当 DM 需要等待代理完成后再继续流程时调用。</p>
+     *
+     * @param roomId           房间 ID
+     * @param roleId           角色 ID
+     * @param extraInstruction 附加指令，追加到代理提示词末尾作为【系统指令】，可为 {@code null}
      */
     public void executeAgentReplySync(String roomId, ObjectId roleId, String extraInstruction) {
         doExecuteAgentReply(roomId, roleId, false, extraInstruction);
     }
 
     /**
-     * AI agent votes using LLM reasoning.
-     * Sends the vote context to the agent's prompt, parses the chosen option,
-     * and calls VoteService.castVote(). Falls back to random choice on parse failure.
+     * AI 代理通过 LLM 推理进行投票。
+     *
+     * <p>将投票上下文注入代理提示词，解析 LLM 返回的选项，
+     * 调用 {@link VoteService#castVote} 提交投票。若解析失败则随机选择。</p>
+     *
+     * @param roomId    房间 ID
+     * @param roleId    角色 ID
+     * @param voteTitle 投票主题
+     * @param options   可选项列表
      */
     @Async("aiExecutor")
     public void executeAgentVote(String roomId, ObjectId roleId, String voteTitle, List<String> options) {
@@ -149,6 +202,17 @@ public class AgentExecutor {
         }
     }
 
+    /**
+     * 执行 AI 代理回复的核心逻辑。
+     *
+     * <p>完整流程：检查角色状态 → 广播输入指示 → 构建提示词 → 调用 LLM →
+     * 分块流式传输 → 存储消息 → 发布事件。</p>
+     *
+     * @param roomId           房间 ID
+     * @param roleId           角色 ID
+     * @param lastAiRound      是否为最后一轮 AI 发言
+     * @param extraInstruction 附加系统指令，可为 {@code null}
+     */
     private void doExecuteAgentReply(String roomId, ObjectId roleId, boolean lastAiRound, String extraInstruction) {
         try {
             LiveGameRoom room = liveGameRoomService.get(roomId);
@@ -292,10 +356,13 @@ public class AgentExecutor {
     }
 
     /**
-     * Extract the reply text from a ChatResponse.
-     * Prefer the second result (index 1) which is the actual reply for reasoning models
-     * (e.g. DeepSeek puts thinking in index 0, reply in index 1).
-     * Falls back to index 0 if only one result exists, then strips think tags.
+     * 从 ChatResponse 中提取回复文本。
+     *
+     * <p>优先使用第二个结果（index 1），这是推理模型（如 DeepSeek）的实际回复，
+     * index 0 为思考过程。如果只有一个结果则使用 index 0 并剥离 think 标签。</p>
+     *
+     * @param chatResponse LLM 响应
+     * @return 提取的回复文本
      */
     private String extractReply(ChatResponse chatResponse) {
         if (chatResponse == null || chatResponse.getResults() == null

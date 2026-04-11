@@ -15,11 +15,22 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
+/**
+ * DM 工具：查阅剧本真相。
+ *
+ * <p>允许 DM 查阅角色秘密和线索详情，但不可将原文直接透露给玩家。
+ * 支持按类型查询：{@code roles}（角色秘密）、{@code clues}（线索详情）、{@code all}（全部）。</p>
+ *
+ * <p>此工具不受阶段限制（{@code allowedPhases} 返回空集合），在任何阶段都可调用。</p>
+ */
 public class ReadFullScriptTool implements DmTool {
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
-        /** "roles", "clues", or "all" */
+        /** 查询类型："roles"（角色秘密）、"clues"（线索详情）或 "all"（全部） */
         private String queryType;
     }
 

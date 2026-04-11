@@ -30,6 +30,20 @@ import java.util.Objects;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * 游戏流程服务。
+ *
+ * <p>管理游戏的核心生命周期：</p>
+ * <ul>
+ *   <li>{@link #startGame} — 启动游戏，初始化阶段状态，触发 DM 执行首幕流程</li>
+ *   <li>{@link #getStageContent} — 获取指定用户角色在当前幕次的剧本内容</li>
+ *   <li>{@link #advanceStage} — 推进到下一幕，压缩已完成幕次的聊天记录</li>
+ *   <li>{@link #endGame} — 结束游戏，持久化游戏记录，触发 AI 复盘，清理 Redis 资源</li>
+ * </ul>
+ *
+ * @see com.example.striptkillgamedemo2.ai.executor.DmExecutor
+ * @see com.example.striptkillgamedemo2.ai.review.FinalReviewService
+ */
 public class GameFlowService {
 
     private final LiveGameRoomService liveGameRoomService;
@@ -44,6 +58,16 @@ public class GameFlowService {
     private final AgentOrchestrator agentOrchestrator;
     private final PhaseTimerService phaseTimerService;
 
+    /**
+     * 启动游戏。
+     *
+     * <p>校验房间状态和前置条件，初始化阶段追踪状态，
+     * 启动首阶段计时器，并触发 DM 执行首幕流程（开场白 + 自我介绍）。</p>
+     *
+     * @param roomId 房间 ID
+     * @return 更新后的游戏房间
+     * @throws IllegalStateException 房间状态不正确、未选剧本或未选角色
+     */
     public LiveGameRoom startGame(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
 
@@ -112,7 +136,13 @@ public class GameFlowService {
         return room;
     }
 
-    /** Returns stage content for a specific user's role. */
+    /**
+     * 获取当前幕次中指定用户角色的剧本内容。
+     *
+     * @param roomId 房间 ID
+     * @param userId 用户 ID
+     * @return 幕次内容 DTO
+     */
     public StageContentDTO getStageContent(String roomId, ObjectId userId) {
         LiveGameRoom room = getPlayableRoom(roomId);
         Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
@@ -144,6 +174,15 @@ public class GameFlowService {
                 .build();
     }
 
+    /**
+     * 推进到下一幕。
+     *
+     * <p>压缩当前幕次的聊天记录，重置 AI 轮次计数器和空闲计时器，
+     * 触发 DM 发表新幕开场介绍。如果已无后续幕次则结束游戏。</p>
+     *
+     * @param roomId 房间 ID
+     * @return 更新后的游戏房间
+     */
     public LiveGameRoom advanceStage(String roomId) {
         LiveGameRoom room = getPlayableRoom(roomId);
 
@@ -184,6 +223,16 @@ public class GameFlowService {
         return room;
     }
 
+    /**
+     * 结束游戏。
+     *
+     * <p>设置房间状态为已完成，清理编排器资源，持久化游戏记录到 MongoDB，
+     * 触发 AI 复盘报告生成，清除 Redis 中的所有房间数据，
+     * 解绑所有真人玩家的活跃房间关联。</p>
+     *
+     * @param roomId 房间 ID
+     * @return 更新后的游戏房间，房间不存在时返回 {@code null}
+     */
     public LiveGameRoom endGame(String roomId) {
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null) {

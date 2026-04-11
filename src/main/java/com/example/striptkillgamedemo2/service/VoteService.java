@@ -20,6 +20,19 @@ import java.util.List;
 
 @Slf4j
 @Service
+/**
+ * 投票服务。
+ *
+ * <p>管理游戏内投票的完整生命周期：</p>
+ * <ul>
+ *   <li>{@link #castVote} — 提交投票（玩家或 AI），记录投票并检查是否全员投完</li>
+ *   <li>{@link #closeVote} — 关闭投票会话，广播结果</li>
+ *   <li>{@link #closeVoteAndNotifyDm} — 关闭投票并通知 DM 处理结果（含平票检测）</li>
+ *   <li>{@link #eliminateRole} — 标记角色出局，检查是否所有人类都已出局</li>
+ * </ul>
+ *
+ * <p>使用 {@code @Lazy} 注入 {@link DmExecutor} 和 {@link GameFlowService} 以打破循环依赖。</p>
+ */
 public class VoteService {
 
     private final LiveGameRoomService liveGameRoomService;
@@ -29,6 +42,9 @@ public class VoteService {
     private final DmExecutor dmExecutor;
     private final GameFlowService gameFlowService;
 
+    /**
+     * 构造投票服务。使用 {@code @Lazy} 注入以打破循环依赖。
+     */
     public VoteService(LiveGameRoomService liveGameRoomService,
                        StringRedisTemplate redisTemplate,
                        SimpMessagingTemplate messagingTemplate,
@@ -46,6 +62,18 @@ public class VoteService {
     private static final String VOTES_KEY_PREFIX = "game:";
     private static final String VOTES_KEY_SUFFIX = ":votes";
 
+    /**
+     * 提交投票。
+     *
+     * <p>记录投票选择，存储投票记录到 Redis，广播投票进度，
+     * 并向真人玩家发送私人投票确认。全员投完后自动关闭投票。</p>
+     *
+     * @param roomId      房间 ID
+     * @param voterRoleId 投票者角色 ID
+     * @param choice      投票选择
+     * @return 是否全员投票完毕
+     * @throws IllegalStateException 没有进行中的投票
+     */
     public boolean castVote(String roomId, ObjectId voterRoleId, String choice) {
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null || room.getActiveVote() == null) {
@@ -111,6 +139,12 @@ public class VoteService {
         return allVoted;
     }
 
+    /**
+     * 关闭投票会话，清除活跃投票状态并广播投票结果。
+     *
+     * @param roomId 房间 ID
+     * @return 投票结果映射（角色 ID → 选择），无活跃投票时返回空 Map
+     */
     public Map<String, String> closeVote(String roomId) {
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null || room.getActiveVote() == null) {
@@ -131,6 +165,13 @@ public class VoteService {
         return results;
     }
 
+    /**
+     * 关闭投票并通知 DM 处理结果。
+     *
+     * <p>包含平票检测：若出现平票，提示 DM 让平票角色轮流发言后重新投票。</p>
+     *
+     * @param roomId 房间 ID
+     */
     public void closeVoteAndNotifyDm(String roomId) {
         Map<String, String> results = closeVote(roomId);
         if (results.isEmpty()) return;
@@ -162,7 +203,10 @@ public class VoteService {
     }
 
     /**
-     * Mark a role as eliminated. If all humans are eliminated, end the game.
+     * 标记角色出局。如果所有真人玩家都已出局，自动结束游戏。
+     *
+     * @param roomId    房间 ID
+     * @param roleIdHex 出局角色 ID（十六进制字符串）
      */
     public void eliminateRole(String roomId, String roleIdHex) {
         LiveGameRoom room = liveGameRoomService.get(roomId);

@@ -18,9 +18,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * DM tool to summarize the current stage before advancing.
- * Archives key findings (lies detected, critical evidence, suspects) into MemoryManager
- * so that later stages and the final review have access to per-stage intelligence.
+ * DM 工具：归档当前幕摘要。
+ *
+ * <p>在每幕结束时调用，将 DM 的关键发现（发现的谎言、关键证据、嫌疑人等）
+ * 归档到 {@link MemoryManager}，以便后续幕次和最终复盘能够访问每幕的情报分析。</p>
+ *
+ * <p>DM 的分析内容不会发送给玩家，仅用于 AI 内部推理。</p>
  */
 @Slf4j
 @Component
@@ -31,6 +34,9 @@ public class SummarizeCurrentStageTool implements DmTool {
     private final LiveGameRoomService liveGameRoomService;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
         /** DM 对本幕重点的文字总结：谁说了谎、谁发现了关键证据、目前的怀疑对象等 */

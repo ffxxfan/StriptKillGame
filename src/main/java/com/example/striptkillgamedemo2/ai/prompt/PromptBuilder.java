@@ -19,12 +19,38 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+/**
+ * 提示词构建器。
+ *
+ * <p>负责从 Markdown 模板和游戏运行时数据构建发送给 LLM 的系统提示词。
+ * 模板文件位于 {@code src/main/resources/prompts/}，通过变量替换注入动态内容。</p>
+ *
+ * <p>核心职责：</p>
+ * <ul>
+ *   <li>{@link #buildDmPrompt} — 构建 DM 提示词，拥有所有角色秘密和线索的完整访问权限</li>
+ *   <li>{@link #buildAgentPrompt} — 构建 AI 代理提示词，沙箱化处理仅展示该角色可见的线索和消息</li>
+ *   <li>{@link #buildCompressionPrompt} — 构建记忆压缩提示词</li>
+ *   <li>{@link #buildReviewPrompt} — 构建终局复盘提示词</li>
+ * </ul>
+ *
+ * @see com.example.striptkillgamedemo2.ai.executor.DmExecutor
+ * @see com.example.striptkillgamedemo2.ai.executor.AgentExecutor
+ */
 public class PromptBuilder {
 
     private final AiEngineProperties properties;
 
     /**
-     * Build DM system prompt — full access to all secrets and clues.
+     * 构建 DM（主持人）系统提示词。
+     *
+     * <p>DM 拥有对所有角色秘密和线索的完整访问权限，提示词包含剧本真相、
+     * 角色列表、搜证次数表、阶段信息和历史摘要等。</p>
+     *
+     * @param room            游戏房间运行时状态
+     * @param script          剧本数据
+     * @param memoryFragments 历史幕次摘要片段
+     * @param recentMessages  最近的聊天消息
+     * @return 完整的 DM 系统提示词
      */
     public String buildDmPrompt(LiveGameRoom room, Script script,
                                  List<String> memoryFragments,
@@ -74,7 +100,17 @@ public class PromptBuilder {
     }
 
     /**
-     * Build agent system prompt — sandboxed to only this role's secrets and clues.
+     * 构建 AI 代理系统提示词。
+     *
+     * <p>沙箱化处理：仅包含该角色可见的线索和消息，隔离其他角色的秘密信息。</p>
+     *
+     * @param room              游戏房间运行时状态
+     * @param script            剧本数据
+     * @param targetRole        目标 AI 代理的角色
+     * @param allClueInstances  所有线索实例
+     * @param memoryFragments   历史幕次摘要片段
+     * @param recentMessages    最近的聊天消息
+     * @return 沙箱化的代理系统提示词
      */
     public String buildAgentPrompt(LiveGameRoom room, Script script,
                                     Role targetRole,
@@ -129,7 +165,11 @@ public class PromptBuilder {
     }
 
     /**
-     * Build compression prompt for summarizing a stage's messages.
+     * 构建记忆压缩提示词，用于将一幕的聊天记录压缩为结构化摘要。
+     *
+     * @param stageNumber 幕次编号
+     * @param messages    本幕的聊天消息列表
+     * @return 压缩提示词
      */
     public String buildCompressionPrompt(int stageNumber, List<GameMessage> messages) {
         String template = loadClasspathTemplate("prompts/compression.md");
@@ -140,7 +180,13 @@ public class PromptBuilder {
     }
 
     /**
-     * Build review prompt for end-game summarization.
+     * 构建终局复盘提示词。
+     *
+     * @param script          剧本数据
+     * @param memoryFragments 所有幕次的历史摘要片段
+     * @param cluePoolSummary 线索池摘要
+     * @param voteRecords     投票记录摘要
+     * @return 复盘提示词
      */
     public String buildReviewPrompt(Script script, List<String> memoryFragments,
                                      String cluePoolSummary, String voteRecords) {
@@ -153,6 +199,12 @@ public class PromptBuilder {
         return replaceVars(template, vars);
     }
 
+    /**
+     * 估算文本的 token 数量。
+     *
+     * @param text 文本内容
+     * @return 估算的 token 数
+     */
     public int estimateTokens(String text) {
         if (text == null || text.isEmpty()) return 0;
         return (int) (text.length() / properties.getCharsPerToken());

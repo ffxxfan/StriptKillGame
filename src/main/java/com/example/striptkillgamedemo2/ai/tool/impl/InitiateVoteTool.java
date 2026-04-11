@@ -25,6 +25,17 @@ import java.util.Set;
 
 @Slf4j
 @Component
+/**
+ * DM 工具：发起投票。
+ *
+ * <p>创建投票会话，广播投票信令给所有玩家，并异步触发所有存活的 AI 代理进行投票。
+ * 投票有超时限制，由 {@link PhaseTimerService} 管理。</p>
+ *
+ * <p>仅在 {@link PhaseType#FREE_CHAT} 和 {@link PhaseType#VOTE} 阶段可用。
+ * 同一时间只能有一个活跃的投票会话。</p>
+ *
+ * @see VoteService
+ */
 public class InitiateVoteTool implements DmTool {
 
     private final LiveGameRoomService liveGameRoomService;
@@ -33,6 +44,9 @@ public class InitiateVoteTool implements DmTool {
     private final AgentExecutor agentExecutor;
     private final PhaseTimerService phaseTimerService;
 
+    /**
+     * 构造投票工具。使用 {@code @Lazy} 注入 AgentExecutor 以打破循环依赖。
+     */
     public InitiateVoteTool(LiveGameRoomService liveGameRoomService,
                             SimpMessagingTemplate messagingTemplate,
                             AiEngineProperties aiEngineProperties,
@@ -45,10 +59,16 @@ public class InitiateVoteTool implements DmTool {
         this.phaseTimerService = phaseTimerService;
     }
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
+        /** 房间 ID */
         private String roomId;
+        /** 投票标题 */
         private String title;
+        /** 投票选项列表 */
         private List<String> options;
     }
 

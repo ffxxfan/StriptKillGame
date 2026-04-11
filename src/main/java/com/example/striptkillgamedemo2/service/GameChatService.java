@@ -20,6 +20,16 @@ import java.util.Objects;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * 游戏聊天服务。
+ *
+ * <p>负责游戏内聊天消息的发送、存储和广播：</p>
+ * <ul>
+ *   <li>{@link #sendMessage} — 发送玩家消息，存储到 Redis 并通过 WebSocket 广播</li>
+ *   <li>{@link #sendAiMessage} — 发送 AI 消息，存储并广播</li>
+ *   <li>{@link #storeAiMessage} — 仅存储 AI 消息（不广播），用于已通过流式传输发送的消息</li>
+ * </ul>
+ */
 public class GameChatService {
 
     private final StringRedisTemplate redisTemplate;
@@ -29,6 +39,15 @@ public class GameChatService {
 
     private static final String MESSAGES_KEY_PREFIX = "game:messages:";
 
+    /**
+     * 发送玩家聊天消息。存储到 Redis 并通过 WebSocket 广播到房间。
+     *
+     * @param roomId       房间 ID
+     * @param senderRoleId 发送者角色 ID
+     * @param content      消息内容
+     * @param room         游戏房间运行时状态
+     * @return 消息 DTO
+     */
     public ChatMessageDTO sendMessage(String roomId, ObjectId senderRoleId, String content, LiveGameRoom room) {
         Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
         Role curRole = script.getRoles().stream()
@@ -54,6 +73,15 @@ public class GameChatService {
         return dto;
     }
 
+    /**
+     * 发送 AI 聊天消息。存储到 Redis 并通过 WebSocket 广播到房间。
+     *
+     * @param roomId       房间 ID
+     * @param senderRoleId 发送者角色 ID
+     * @param content      消息内容
+     * @param room         游戏房间运行时状态
+     * @return 消息 DTO
+     */
     public ChatMessageDTO sendAiMessage(String roomId, ObjectId senderRoleId, String content, LiveGameRoom room) {
         Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));
         Role curRole = script.getRoles().stream()
@@ -80,8 +108,15 @@ public class GameChatService {
     }
 
     /**
-     * Store an AI message to Redis WITHOUT broadcasting via WebSocket.
-     * Used when chunks have already been streamed to the client.
+     * 仅存储 AI 消息到 Redis，不通过 WebSocket 广播。
+     *
+     * <p>用于消息内容已通过流式分块传输到客户端的场景。</p>
+     *
+     * @param roomId       房间 ID
+     * @param senderRoleId 发送者角色 ID
+     * @param content      消息内容
+     * @param room         游戏房间运行时状态
+     * @return 消息 DTO
      */
     public ChatMessageDTO storeAiMessage(String roomId, ObjectId senderRoleId, String content, LiveGameRoom room) {
         Script script = scriptCacheService.getScript(new ObjectId(room.getScriptId()));

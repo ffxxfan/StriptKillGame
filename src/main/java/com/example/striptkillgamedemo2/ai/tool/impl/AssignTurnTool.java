@@ -20,15 +20,27 @@ import java.util.Objects;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+/**
+ * DM 工具：指定发言角色。
+ *
+ * <p>用于轮次制环节中切换下一位发言者。更新房间的当前发言者状态，
+ * 广播 {@code TURN_CHANGE} 信号给前端。如果指定的角色是 AI 代理，
+ * 会自动触发其发言（已出局角色除外）。</p>
+ */
 public class AssignTurnTool implements DmTool {
 
     private final LiveGameRoomService liveGameRoomService;
     private final SimpMessagingTemplate messagingTemplate;
     private final AgentExecutor agentExecutor;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
+        /** 房间 ID */
         private String roomId;
+        /** 下一位发言者的角色 ID */
         private String roleId;
     }
 

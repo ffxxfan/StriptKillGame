@@ -26,12 +26,17 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Unified phase/stage transition tool — replaces advancePhase, decidePhaseTransition,
- * endFreeChat, and skipVote with a single state-machine interface.
+ * DM 工具：统一的流程推进工具。
  *
- * Actions:
- *   NEXT_PHASE  — advance to the next phase within the current stage
- *   NEXT_STAGE  — advance to the next stage (skips remaining phases in current stage)
+ * <p>替代了 advancePhase、decidePhaseTransition、endFreeChat 和 skipVote，
+ * 提供单一的状态机接口：</p>
+ * <ul>
+ *   <li>{@code NEXT_PHASE} — 推进到当前幕的下一个环节（如结束自由讨论进入投票）</li>
+ *   <li>{@code NEXT_STAGE} — 推进到下一幕（跳过当前幕剩余环节，需要检查必需环节是否完成）</li>
+ * </ul>
+ *
+ * <p>在推进时会自动处理：阶段计时器取消、阶段状态重置、记忆压缩回退、
+ * 前端信号广播（{@code PHASE_ADVANCE}/{@code STAGE_ADVANCE}）等。</p>
  */
 @Slf4j
 @Component
@@ -47,9 +52,12 @@ public class TransitionPhaseTool implements DmTool {
     private final MemoryManager memoryManager;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
-        /** NEXT_PHASE | NEXT_STAGE */
+        /** 推进动作：{@code NEXT_PHASE} 或 {@code NEXT_STAGE} */
         private String action;
         /** 转换原因（可选，便于复盘追溯） */
         private String reason;

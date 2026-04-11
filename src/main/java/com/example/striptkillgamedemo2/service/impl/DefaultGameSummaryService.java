@@ -9,9 +9,10 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 
 /**
- * Stub implementation of GameSummaryService.
- * Reads raw messages from Redis and returns them as the "summary".
- * Replace with AI summarization when ready.
+ * 游戏总结服务的默认实现（占位）。
+ *
+ * <p>从 Redis 读取原始消息并直接返回作为"总结"。
+ * 后续可替换为 AI 智能总结实现。</p>
  */
 @Service
 @RequiredArgsConstructor

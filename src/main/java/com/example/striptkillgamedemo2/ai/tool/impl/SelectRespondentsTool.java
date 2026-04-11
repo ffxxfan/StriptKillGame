@@ -22,14 +22,27 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+/**
+ * DM 工具：选择回复者。
+ *
+ * <p>DM 根据消息内容选择 1-2 个最相关的 AI 角色进行回复。
+ * 选中的角色会被顺序触发发言，DM 自身的文本输出被抑制（{@code agentDelegated=true}）。</p>
+ *
+ * <p>角色名称匹配支持模糊匹配（contains），以适应 LLM 可能截断角色名的情况。
+ * 已出局角色会被跳过。</p>
+ */
 public class SelectRespondentsTool implements DmTool {
 
     private final AgentExecutor agentExecutor;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
+        /** 原始消息内容 */
         private String messageContent;
-        /** Role names (e.g. "庄主白峰") selected by the DM. */
+        /** DM 选择的角色名称列表（如 "庄主白峰"） */
         private List<String> selectedRoleNames;
     }
 
@@ -82,7 +95,14 @@ public class SelectRespondentsTool implements DmTool {
         return Map.of("respondents", selected, "triggered", aiRoleIds.size());
     }
 
-    /** Match a role name to an AI member's roleId (fuzzy: contains match). */
+    /**
+     * 将角色名称模糊匹配到 AI 成员的角色 ID。
+     *
+     * @param name 角色名称
+     * @param ctx  DM 工具上下文
+     * @param room 游戏房间运行时状态
+     * @return 匹配到的角色 ID，未匹配到或已出局则返回 {@code null}
+     */
     private ObjectId resolveAiRoleId(String name, DmToolContext ctx, LiveGameRoom room) {
         String trimmed = name.trim();
         for (Role role : ctx.getScript().getRoles()) {

@@ -15,8 +15,21 @@ import java.util.Objects;
 
 @Slf4j
 @Component
+/**
+ * DM 工具：触发轮流发言。
+ *
+ * <p>触发所有存活的 AI 角色按顺序发言（如自我介绍、最终陈述等）。
+ * 采用延迟执行策略：将发言请求暂存到 {@link DmToolContext}，
+ * 由 {@link com.example.striptkillgamedemo2.ai.executor.DmExecutor}
+ * 在 DM 文本流式传输完成后再依次触发各代理发言。</p>
+ *
+ * <p>所有 AI 角色完成后会自动回调 DM，检查真人玩家是否也已发言并决定后续流程。</p>
+ */
 public class TriggerRoundRobinSpeechTool implements DmTool {
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
         /** 发言指令，如"请进行自我介绍"或"这是最终陈述，请复盘和辩解" */

@@ -16,15 +16,30 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+/**
+ * DM 工具：设置搜证模式。
+ *
+ * <p>设置当前搜证阶段的线索公开模式：</p>
+ * <ul>
+ *   <li>{@code PUBLIC} — 搜证结果全场可见</li>
+ *   <li>{@code PRIVATE} — 搜证结果仅搜证者可见</li>
+ * </ul>
+ *
+ * <p>仅在 {@link PhaseType#INVESTIGATION} 阶段可用。</p>
+ */
 public class SetInvestigationModeTool implements DmTool {
 
     private static final Set<String> VALID_MODES = Set.of("PUBLIC", "PRIVATE");
 
     private final LiveGameRoomService liveGameRoomService;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
-        private String mode; // "PUBLIC" | "PRIVATE"
+        /** 搜证模式："PUBLIC"（公开）或 "PRIVATE"（私密） */
+        private String mode;
     }
 
     @Override

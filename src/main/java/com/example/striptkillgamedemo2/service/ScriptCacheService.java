@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Caches Script objects in Redis to avoid repeated MongoDB reads during gameplay.
- * Script content is immutable during a game session, so a 7-day TTL is safe.
+ * 剧本缓存服务。
+ *
+ * <p>将 {@link Script} 对象缓存在 Redis 中，避免游戏过程中频繁读取 MongoDB。
+ * 剧本内容在游戏会话期间不可变，因此使用 24 小时的 TTL 是安全的。</p>
  */
 @Slf4j
 @Service
@@ -28,6 +30,13 @@ public class ScriptCacheService {
     private final ScriptRepository scriptRepository;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 获取剧本，优先从 Redis 缓存读取，缓存未命中时从 MongoDB 加载并回填缓存。
+     *
+     * @param scriptId 剧本 ID
+     * @return 剧本对象
+     * @throws IllegalArgumentException 如果剧本不存在
+     */
     public Script getScript(ObjectId scriptId) {
         String key = KEY_PREFIX + scriptId.toHexString();
         String json = redisTemplate.opsForValue().get(key);
@@ -44,6 +53,11 @@ public class ScriptCacheService {
         return script;
     }
 
+    /**
+     * 将剧本缓存到 Redis。
+     *
+     * @param script 剧本对象
+     */
     public void cacheScript(Script script) {
         try {
             String json = objectMapper.writeValueAsString(script);
@@ -58,6 +72,11 @@ public class ScriptCacheService {
         }
     }
 
+    /**
+     * 从 Redis 中移除剧本缓存。
+     *
+     * @param scriptId 剧本 ID
+     */
     public void evictScript(ObjectId scriptId) {
         redisTemplate.delete(KEY_PREFIX + scriptId.toHexString());
     }

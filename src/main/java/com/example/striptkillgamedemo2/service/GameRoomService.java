@@ -20,13 +20,26 @@ import java.util.Objects;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+/**
+ * 游戏房间管理服务。
+ *
+ * <p>提供房间生命周期管理（创建、加入、离开）、剧本选择、角色分配等功能。
+ * 自动为未被玩家选择的角色分配 AI 代理，NPC 角色设为 DM。</p>
+ *
+ * @see LiveGameRoomService
+ */
 public class GameRoomService {
 
     private final LiveGameRoomService liveGameRoomService;
     private final ScriptCacheService scriptCacheService;
     private final ScriptRepository scriptRepository;
 
-    /** Create room. Cleans up any existing active room for this user first. */
+    /**
+     * 创建新房间。如果用户已有活跃房间，先清理旧房间。
+     *
+     * @param userId 创建者用户 ID
+     * @return 新创建的游戏房间
+     */
     public LiveGameRoom createRoom(ObjectId userId) {
         String existing = liveGameRoomService.getActiveRoomId(userId);
         if (existing != null) {
@@ -56,6 +69,13 @@ public class GameRoomService {
         return room;
     }
 
+    /**
+     * 获取房间，不存在时抛出异常。
+     *
+     * @param roomId 房间 ID
+     * @return 游戏房间
+     * @throws IllegalArgumentException 房间不存在或已结束
+     */
     public LiveGameRoom getRoom(String roomId) {
         LiveGameRoom room = liveGameRoomService.get(roomId);
         if (room == null) {
@@ -64,6 +84,13 @@ public class GameRoomService {
         return room;
     }
 
+    /**
+     * 验证用户是否为房间成员。
+     *
+     * @param room   游戏房间
+     * @param userId 用户 ID
+     * @throws IllegalStateException 用户不在房间中
+     */
     public void validateMembership(LiveGameRoom room, ObjectId userId) {
         boolean isMember = room.getMembers().stream()
                 .anyMatch(m -> m.getUserId() != null
@@ -73,7 +100,14 @@ public class GameRoomService {
         }
     }
 
-    /** Select a script and immediately load its full content into Redis. */
+    /**
+     * 选择剧本并将其完整内容加载到 Redis 缓存。
+     *
+     * @param roomId   房间 ID
+     * @param scriptId 剧本 ID
+     * @param userId   操作者用户 ID
+     * @return 更新后的游戏房间
+     */
     public LiveGameRoom selectScript(String roomId, ObjectId scriptId, ObjectId userId) {
         LiveGameRoom room = getRoom(roomId);
         validateStatus(room, GameRoomStatus.WAITING);
@@ -88,6 +122,12 @@ public class GameRoomService {
         return room;
     }
 
+    /**
+     * 获取房间可选的角色列表，标记已被选择的角色为不可用。
+     *
+     * @param roomId 房间 ID
+     * @return 角色 DTO 列表
+     */
     public List<RoleDTO> getRoles(String roomId) {
         LiveGameRoom room = getRoom(roomId);
         if (room.getScriptId() == null) {
@@ -112,6 +152,14 @@ public class GameRoomService {
         ).toList();
     }
 
+    /**
+     * 为用户选择角色。未被选择的角色自动分配 AI 代理，NPC 角色设为 DM。
+     *
+     * @param roomId 房间 ID
+     * @param roleId 角色 ID
+     * @param userId 用户 ID
+     * @return 更新后的游戏房间
+     */
     public LiveGameRoom selectRole(String roomId, ObjectId roleId, ObjectId userId) {
         LiveGameRoom room = getRoom(roomId);
         validateStatus(room, GameRoomStatus.WAITING);
@@ -159,8 +207,13 @@ public class GameRoomService {
     }
 
     /**
-     * Mark user as offline. If all humans gone, set idle TTL.
-     * Actual Redis eviction happens in GameFlowService.endGame().
+     * 用户离开房间（标记为离线）。
+     *
+     * <p>如果所有真人玩家都已离线：游戏中的房间设置空闲 TTL 等待自动过期，
+     * 等待中的房间直接移除。实际的 Redis 清理在 {@link GameFlowService#endGame} 中执行。</p>
+     *
+     * @param roomId 房间 ID
+     * @param userId 用户 ID
      */
     public void leaveRoom(String roomId, ObjectId userId) {
         LiveGameRoom room = getRoom(roomId);
@@ -190,6 +243,14 @@ public class GameRoomService {
         }
     }
 
+    /**
+     * 查找用户在房间中的角色 ID。
+     *
+     * @param room   游戏房间
+     * @param userId 用户 ID
+     * @return 角色 ID
+     * @throws IllegalStateException 用户不在房间中或未选择角色
+     */
     public ObjectId findRoleIdForUser(LiveGameRoom room, ObjectId userId) {
         return room.getMembers().stream()
                 .filter(m -> m.getUserId() != null
@@ -200,6 +261,12 @@ public class GameRoomService {
                 .orElseThrow(() -> new IllegalStateException("你不在该房间中或未选择角色"));
     }
 
+    /**
+     * 将游戏房间运行时对象转换为房间详情 DTO（含角色名、头像等信息）。
+     *
+     * @param room 游戏房间
+     * @return 房间详情 DTO
+     */
     public RoomDetailDTO toDetailDTO(LiveGameRoom room) {
         Script script = null;
         if (room.getScriptId() != null) {

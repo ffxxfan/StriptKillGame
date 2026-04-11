@@ -25,15 +25,35 @@ import java.util.Set;
 @Slf4j
 @Component
 @RequiredArgsConstructor
+/**
+ * DM 工具：授权搜证。
+ *
+ * <p>授权指定角色在指定地点进行搜证。执行流程：</p>
+ * <ol>
+ *   <li>校验角色存在性和剩余搜证次数</li>
+ *   <li>根据地点标签、可搜证角色和当前幕次过滤匹配的线索</li>
+ *   <li>排除已发现的线索，创建新的线索实例</li>
+ *   <li>扣除搜证次数并保存房间状态</li>
+ *   <li>根据搜证模式（PUBLIC/PRIVATE）广播或私发线索</li>
+ * </ol>
+ *
+ * <p>仅在 {@link PhaseType#INVESTIGATION} 阶段可用。</p>
+ */
 public class AuthorizeSearchTool implements DmTool {
 
     private final LiveGameRoomService liveGameRoomService;
     private final SimpMessagingTemplate messagingTemplate;
 
+    /**
+     * 工具输入参数。
+     */
     @Data
     public static class Input {
+        /** 房间 ID */
         private String roomId;
+        /** 搜证角色 ID */
         private String roleId;
+        /** 搜证地点 */
         private String location;
     }
 
