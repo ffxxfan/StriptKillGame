@@ -56,6 +56,7 @@
 - Redis
 
 ### 启动后端
+> 注意：需要配置 application.properties 文件
 ```bash
 ./mvnw spring-boot:run
 ```
